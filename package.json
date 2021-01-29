@@ -1,0 +1,55 @@
+{
+  "name": "@block65/biruda",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "sideEffects": false,
+  "main": "dist/lib/biruda.js",
+  "bin": {
+    "biruda": "dist/bin/biruda.js"
+  },
+  "files": [
+    "dist/*/**.js",
+    "dist/*/**.d.ts",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rimraf dist",
+    "postinstall": "chmod +x dist/bin/biruda.js || true",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@vercel/nft": "^0.9.5",
+    "archiver": "^5.2.0",
+    "esbuild": "^0.8.36",
+    "mem": "^8.0.0",
+    "micromatch": "^4.0.2",
+    "pino": "^6.11.0",
+    "pino-pretty": "^4.3.0",
+    "pkg-up": "^3.1.0",
+    "prettier": "^2.2.1",
+    "rimraf": "^3.0.2",
+    "source-map-support": "^0.5.19",
+    "tmp-promise": "^3.0.2",
+    "typescript": "^4.1.3",
+    "yargs": "^16.2.0"
+  },
+  "devDependencies": {
+    "@block65/eslint-config": "3.1.1",
+    "@types/archiver": "^5.1.0",
+    "@types/jest": "^26.0.20",
+    "@types/node": "^14.14.22",
+    "@types/pino": "^6.3.5",
+    "@types/tmp": "^0.2.0",
+    "@types/yargs": "^16.0.0",
+    "@typescript-eslint/eslint-plugin": "^4.14.1",
+    "eslint": "^7.18.0",
+    "eslint-plugin-formatjs": "^2.10.7",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-prettier": "^3.3.1",
+    "eslint-plugin-react": "^7.22.0",
+    "eslint-plugin-react-hooks": "^4.2.0",
+    "type-fest": "^0.20.2"
+  }
+}
