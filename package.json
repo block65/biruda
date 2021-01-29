@@ -14,9 +14,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:watch": "tsc --watch",
-    "clean": "rimraf dist",
-    "postinstall": "chmod +x dist/bin/biruda.js || true",
+    "build:clean": "rimraf dist/*",
+    "build:watch": "yarn build -w",
+    "prepare": "yarn build:clean && yarn build && chmod +x dist/bin/biruda.js",
     "test": "jest"
   },
   "dependencies": {
