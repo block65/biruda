@@ -39,17 +39,21 @@
     "@block65/eslint-config": "3.1.1",
     "@types/archiver": "^5.1.0",
     "@types/jest": "^26.0.20",
+    "@types/micromatch": "^4.0.1",
     "@types/node": "^14.14.22",
     "@types/pino": "^6.3.5",
     "@types/tmp": "^0.2.0",
     "@types/yargs": "^16.0.0",
     "@typescript-eslint/eslint-plugin": "^4.14.1",
+    "@typescript-eslint/parser": "^4.14.1",
     "eslint": "^7.18.0",
     "eslint-plugin-formatjs": "^2.10.7",
     "eslint-plugin-import": "^2.22.1",
     "eslint-plugin-prettier": "^3.3.1",
     "eslint-plugin-react": "^7.22.0",
     "eslint-plugin-react-hooks": "^4.2.0",
+    "jest": "^26.6.3",
+    "ts-jest": "^26.5.0",
     "type-fest": "^0.20.2"
   }
 }
