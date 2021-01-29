@@ -1,6 +1,6 @@
 {
   "name": "@block65/biruda-fixtures",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "dist/src/index.js",
   "license": "MIT",
   "dependencies": {
