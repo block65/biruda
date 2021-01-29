@@ -14,8 +14,8 @@ jobs:
         with:
           node-version: 14
       - run: yarn install --production=false --non-interactive --frozen-lockfile
-      - run: cd __tests__/fixtures/ && yarn install --non-interactive --frozen-lockfile
-      - run: yarn test
+#      - run: cd __tests__/fixtures/ && yarn install --non-interactive --frozen-lockfile
+#      - run: yarn test
 
   publish-npm:
     needs: build
