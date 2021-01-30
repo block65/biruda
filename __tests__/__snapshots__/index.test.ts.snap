@@ -123,11 +123,11 @@ Array [
 
 exports[`Deps Fixtures traceFileDependencies 1`] = `
 Map {
-  "aws-sdk@2.818.0" => Object {
+  "aws-sdk@2.831.0" => Object {
     "files": undefined,
     "name": "aws-sdk",
     "path": "/home/mholman/Projects/block65/biruda/__tests__/fixtures/node_modules/aws-sdk",
-    "version": "2.818.0",
+    "version": "2.831.0",
   },
   "jmespath@0.15.0" => Object {
     "files": undefined,

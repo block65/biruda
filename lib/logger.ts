@@ -1,10 +1,12 @@
 import createLogger from 'pino';
+import supportsColor from 'supports-color';
 
 export const logger = createLogger({
   level: 'info',
   prettyPrint: {
-    colorize: true,
+    colorize: supportsColor.stdout,
     translateTime: true,
+    ignore: 'hostname,pid',
   },
 });
 
