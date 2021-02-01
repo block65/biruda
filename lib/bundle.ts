@@ -38,7 +38,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     ...configFileProps,
   };
 
-  const { entryPoints = [], ...restConfig } = resolvedConfig;
+  const { entryPoints = [], forceInclude = [], ...restConfig } = resolvedConfig;
 
   if (restConfig.verbose) {
     logger.level = 'trace';
@@ -112,10 +112,19 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
     logger.info(`Archiving files...`);
     await archiveFiles({
-      files,
       base,
-      extraGlobDir: pkgDir,
+      pkgDir,
       outDir,
+      files,
+      extraGlobDirs: [
+        ...forceInclude.map((name) => {
+          return dirname(
+            require.resolve(`${name}/package.json`, {
+              paths: [dirname(absoluteEntryPoint)],
+            }),
+          );
+        }),
+      ],
       format: resolvedConfig.archiveFormat,
     });
 

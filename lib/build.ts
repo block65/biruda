@@ -3,7 +3,7 @@ import * as esbuild from 'esbuild';
 import { lstatSync, writeFileSync } from 'fs';
 import { dir } from 'tmp-promise';
 import pkgUp from 'pkg-up';
-import { dirname, isAbsolute, resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { logger } from './logger';
 
 // all optional because they might be on command like
@@ -13,6 +13,7 @@ export interface BirudaConfigFileProperties {
   outDir?: string;
   platform?: string;
   externals?: string[];
+  forceInclude?: string[];
   ignorePackages?: string[];
   archiveFormat?: 'zip' | 'tar';
   sourceMapSupport?: boolean;
@@ -25,6 +26,7 @@ export interface BirudaCliArguments {
   // baseDir?: string;
   entrypoint?: string[];
   archiveFormat?: string;
+  forceInclude?: string[];
   sourceMapSupport?: boolean;
 }
 
@@ -36,6 +38,7 @@ export interface BirudaBuildOptions {
   platform: string;
   externals?: string[];
   ignorePackages?: string[];
+  forceInclude?: string[];
   sourceMapSupport?: boolean;
 }
 

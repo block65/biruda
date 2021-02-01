@@ -1,4 +1,4 @@
-/** @const {BirudaOptions} */
+/** @const {BirudaConfigFileProperties} */
 module.exports = {
   entryPoints: ['src/index.ts'],
   external: [],

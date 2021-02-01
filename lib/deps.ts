@@ -6,7 +6,6 @@ import { existsSync, readFileSync } from 'fs';
 import type { PackageJson } from 'type-fest';
 import micromatch from 'micromatch';
 import mem from 'mem';
-import { inspect } from 'util';
 import { logger } from './logger';
 
 // import readPkgUp from 'read-pkg-up';
@@ -369,10 +368,10 @@ export async function traceFiles(
 
   logger.info('Calculating dependencies...');
   logger.trace(
-    'Looking for dependencies entry: %s, base: %s, wd: %s',
-    entryPoint,
+    'Looking for dependencies base: %s, entry: %s, wd: %s',
     base,
-    processCwd,
+    relative(base, entryPoint),
+    relative(base, processCwd),
   );
 
   const traceResult = await nodeFileTrace([entryPoint], {

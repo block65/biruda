@@ -1,6 +1,6 @@
 import archiver from 'archiver';
 import { createWriteStream, existsSync, lstatSync } from 'fs';
-import { join, resolve } from 'path';
+import { basename, join, relative, resolve } from 'path';
 import { constants } from 'zlib';
 import { logger } from './logger';
 import { Dependency } from './deps';
@@ -15,16 +15,20 @@ function maybeReducePathToNodeModules(path: string, fallback: string): string {
 }
 
 export async function archiveFiles({
-  files,
-  extraGlobDir,
   base,
+  pkgDir,
   outDir,
+  pkgFiles = [],
+  files = [],
+  extraGlobDirs = [],
   format = 'tar',
 }: {
-  files: string[];
-  extraGlobDir: string;
   base: string;
+  pkgDir: string;
   outDir: string;
+  pkgFiles?: string[];
+  files?: string[];
+  extraGlobDirs?: string[];
   format?: 'zip' | 'tar';
 }) {
   const isTar = format === 'tar';
@@ -39,12 +43,6 @@ export async function archiveFiles({
         }
       : { zlib: { level: constants.Z_BEST_SPEED } },
   );
-
-  const archiveFileName = `pkg.${format}${isTar ? '.gz' : ''}`;
-
-  archive.glob('**/*', {
-    cwd: extraGlobDir,
-  });
 
   // good practice to catch warnings (ie stat failures and other non-blocking errors)
   archive.on('warning', (err) => {
@@ -75,6 +73,7 @@ export async function archiveFiles({
     }, 500),
   );
 
+  const archiveFileName = `pkg.${format}${isTar ? '.gz' : ''}`;
   const output = createWriteStream(`${outDir}/${archiveFileName}`);
 
   // listen for all archive data to be written
@@ -97,9 +96,39 @@ export async function archiveFiles({
     logger.trace('Data has been drained');
   });
 
-  logger.trace('Piping archiver into output');
   // pipe archive data to the output
+  logger.trace('Piping archiver into output');
   archive.pipe(output);
+
+  logger.trace('adding pkgDir %s', pkgDir);
+  archive.directory(pkgDir, false);
+
+  logger.trace({ pkgFiles }, 'adding %d extra pkgFiles', pkgFiles.length);
+
+  pkgFiles.forEach((file) => {
+    archive.file(join(base, file), {
+      name: basename(file),
+      // prefix: base,
+    });
+  });
+
+  logger.trace(
+    { extraGlobDirs },
+    'adding %d extra dirs via glob',
+    extraGlobDirs.length,
+  );
+
+  extraGlobDirs.forEach((dir) => {
+    archive.glob(
+      '**/*',
+      {
+        cwd: dir,
+      },
+      {
+        prefix: relative(base, dir),
+      },
+    );
+  });
 
   logger.info(`Adding files to archive...`);
   files.forEach((file) => {
