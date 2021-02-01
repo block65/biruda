@@ -97,13 +97,12 @@ export async function archiveFiles({
   });
 
   // pipe archive data to the output
-  logger.trace('Piping archiver into output');
   archive.pipe(output);
 
-  logger.trace('adding pkgDir %s', pkgDir);
+  logger.trace('Adding pkgDir %s', pkgDir);
   archive.directory(pkgDir, false);
 
-  logger.trace({ pkgFiles }, 'adding %d extra pkgFiles', pkgFiles.length);
+  logger.trace({ pkgFiles }, 'Adding %d extra pkgFiles', pkgFiles.length);
 
   pkgFiles.forEach((file) => {
     archive.file(join(base, file), {
@@ -113,8 +112,8 @@ export async function archiveFiles({
   });
 
   logger.trace(
-    { extraGlobDirs },
-    'adding %d extra dirs via glob',
+    // { extraGlobDirs },
+    'Adding %d extra dirs via glob',
     extraGlobDirs.length,
   );
 
@@ -130,7 +129,7 @@ export async function archiveFiles({
     );
   });
 
-  logger.info(`Adding files to archive...`);
+  logger.info(`Adding %d files...`, files.length);
   files.forEach((file) => {
     archive.file(join(base, file), {
       name: file,
@@ -194,11 +193,11 @@ export async function archiveDependencies({
     'progress',
     basicThrottle((progress) => {
       logger.trace(
-        'Progress: %s of %s files archived',
+        'Progress: %s of %s entries archived',
         progress.entries.processed,
         progress.entries.total,
       );
-    }, 500),
+    }, 300),
   );
 
   const output = createWriteStream(`${outDir}/${archiveFileName}`);

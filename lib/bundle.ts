@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { logger } from './logger';
 import { traceFiles } from './deps';
 import { archiveFiles } from './archive';
@@ -8,14 +8,13 @@ import {
   BirudaConfigFileProperties,
   build,
 } from './build';
-import { serialPromiseMapAccum } from './utils';
+import {
+  getDependencyPathsFromModule,
+  maybeMakeAbsolute,
+  resolveModulePath,
+  serialPromiseMapAccum,
+} from './utils';
 
-function maybeMakeAbsolute(entry: string, baseDir: string): string {
-  if (isAbsolute(entry)) {
-    return entry;
-  }
-  return resolve(baseDir, entry);
-}
 export async function cliBundle(cliArguments: BirudaCliArguments) {
   const configFileProps: BirudaConfigFileProperties = cliArguments.config
     ? // eslint-disable-next-line global-require,import/no-dynamic-require
@@ -69,8 +68,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ],
     };
 
-    logger.info(`Starting build...`);
-
     const { tmpFile: pkgFile, tmpDir: pkgDir, cleanup } = await build(options);
 
     logger.info(
@@ -78,15 +75,15 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       dirname(absoluteEntryPoint),
     );
 
-    // const dependencies = await traceFileDependencies(pkgFile, {
-    //   workingDirectory: dirname(absoluteEntryPoint),
-    //   ignorePackages: resolvedConfig.ignorePackages,
-    // });
-
     const { files, base } = await traceFiles(pkgFile, {
       originalEntryPoint: absoluteEntryPoint,
       ignorePackages: resolvedConfig.ignorePackages,
     });
+
+    // const dependencies = await traceFileDependencies(pkgFile, {
+    //   workingDirectory: dirname(absoluteEntryPoint),
+    //   ignorePackages: resolvedConfig.ignorePackages,
+    // });
 
     // if (
     //   resolvedConfig.sourceMapSupport &&
@@ -110,21 +107,28 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     //   });
     // }
 
+    logger.debug({ forceInclude }, 'Determining forceInclude paths');
+
+    const extraGlobDirs = new Set<string>(forceInclude);
+    forceInclude.forEach((name) => {
+      getDependencyPathsFromModule(name, base, function shouldInclude(path) {
+        const include = !extraGlobDirs.has(path);
+        if (include) {
+          extraGlobDirs.add(path);
+        }
+        return include;
+      });
+    });
+
+    logger.debug({ additionalPaths: extraGlobDirs }, 'Got additional paths');
+
     logger.info(`Archiving files...`);
     await archiveFiles({
       base,
       pkgDir,
       outDir,
       files,
-      extraGlobDirs: [
-        ...forceInclude.map((name) => {
-          return dirname(
-            require.resolve(`${name}/package.json`, {
-              paths: [dirname(absoluteEntryPoint)],
-            }),
-          );
-        }),
-      ],
+      extraGlobDirs: [...extraGlobDirs],
       format: resolvedConfig.archiveFormat,
     });
 

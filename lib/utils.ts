@@ -1,4 +1,62 @@
 import type { AsyncReturnType } from 'type-fest';
+import { dirname, isAbsolute, resolve } from 'path';
+import { readManifestSync } from './deps';
+import { logger } from './logger';
+
+export function maybeMakeAbsolute(entry: string, baseDir: string): string {
+  if (isAbsolute(entry)) {
+    return entry;
+  }
+  return resolve(baseDir, entry);
+}
+
+export function resolveModulePath(id: string, from: string): string {
+  logger.trace('Resolving module path for "%s" from %s', id, from);
+
+  return dirname(
+    require.resolve(`${id}/package.json`, {
+      paths: [from],
+    }),
+  );
+}
+
+export function getDependencyPathsFromModule(
+  name: string,
+  base: string,
+  callback: (path: string, name: string) => boolean,
+  parents: string[] = [],
+): void {
+  logger.debug('[%s] Resolving deps for "%s"', parents.join('->'), name);
+  const modulePath = resolveModulePath(name, base);
+
+  if (!callback(modulePath, name)) {
+    return;
+  }
+
+  const pkgJson = readManifestSync(modulePath);
+
+  if (!pkgJson) {
+    throw new Error(`Unable to locate manifest for ${name}`);
+  }
+
+  const dependencies = Object.keys(pkgJson.dependencies || {});
+
+  logger.trace('[%s] Found %d deps', name, Object.keys(dependencies).length);
+
+  // at leaf node
+  if (dependencies.length === 0) {
+    // callback(modulePath);
+    return; // [modulePath];
+  }
+
+  dependencies.forEach((pkgDep) => {
+    // logger.trace('[%s] Found dep %s', pkgDep, name);
+    getDependencyPathsFromModule(pkgDep, modulePath, callback, [
+      ...parents,
+      name,
+    ]);
+  });
+}
 
 export function serialPromiseMapAccum<
   T,
@@ -16,11 +74,12 @@ export function serialPromiseMapAccum<
   }, Promise.resolve([] as R[]));
 }
 
+// create a function that will definitely run at least once, every `delay` seconds
 export function basicThrottle<T extends (...args: any[]) => any>(
   callback: T,
   delay: number,
 ) {
-  let callable: boolean = true;
+  let callable = true;
   return (...args: Parameters<T>): void => {
     if (callable) {
       callable = false;
@@ -29,5 +88,17 @@ export function basicThrottle<T extends (...args: any[]) => any>(
       }, delay);
       callback(...args);
     }
+  };
+}
+
+// create a function that will run at least once `delay` seconds after the last call
+export function basicDebounce<T extends (...args: any[]) => any>(
+  callback: T,
+  delay: number,
+) {
+  let timeout: NodeJS.Timeout;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => callback(...args), delay);
   };
 }

@@ -16,6 +16,7 @@ describe('Deps Fixtures', () => {
 
   test('traceDependencies', async () => {
     const base = require.resolve('./fixtures');
+    // eslint-disable-next-line global-require
     const manifest = require(`./fixtures/package.json`);
 
     await expect(

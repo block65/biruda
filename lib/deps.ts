@@ -71,12 +71,12 @@ function readManifestSyncInner(
   return null;
 }
 
-const readManifestSync = mem(readManifestSyncInner, {
+export const readManifestSync = mem(readManifestSyncInner, {
   cacheKey: ([fdirOrFile]) => fdirOrFile,
 });
 
-function findWorkspaceRoot(initial = process.cwd()) {
-  logger.trace('Finding workspace root from %s', initial);
+export function findWorkspaceRoot(initial = process.cwd()) {
+  logger.debug('Finding workspace root from %s', initial);
 
   let previousDirectory = null;
   let currentDirectory = normalize(initial);
@@ -101,7 +101,7 @@ function findWorkspaceRoot(initial = process.cwd()) {
           relativePath === '' ||
           micromatch([relativePath], workspaces, { bash: true }).length > 0
         ) {
-          logger.trace(
+          logger.debug(
             { list: [relativePath], patterns: workspaces },
             'Success! %s',
             currentDirectory,
@@ -110,7 +110,7 @@ function findWorkspaceRoot(initial = process.cwd()) {
           return currentDirectory;
         }
 
-        logger.trace(
+        logger.debug(
           { list: [relativePath], patterns: workspaces },
           'Workspace doesnt include me %s',
           currentDirectory,
@@ -382,7 +382,7 @@ export async function traceFiles(
     // paths: [base],
   });
 
-  const { fileList /* esmFileList, reasons */ } = traceResult;
+  const { fileList /* esmFileList */, reasons } = traceResult;
 
   if (traceResult.warnings.length > 0) {
     logger.warn('Trace warnings: %d', traceResult.warnings.length);
@@ -408,7 +408,15 @@ export async function traceFiles(
   //   })
   //   .map(([reasonPath]): string => reasonPath);
 
-  return { base, files: fileList };
+  // find and exclude the initial entry point
+  const [resolvedEntryPoint] = Object.entries(reasons)
+    .filter(([, reason]) => reason.type === 'initial')
+    .map(([file, reason]) => ({ file, ...reason }));
+
+  return {
+    base,
+    files: fileList.filter((file) => file !== resolvedEntryPoint.file),
+  };
 }
 
 export async function traceFileDependencies(
@@ -481,7 +489,7 @@ export async function traceFileDependencies(
         // reasonPath.includes('node_modules')
       );
     })
-    .forEach(([reasonPath, reason]): void => {
+    .forEach(([reasonPath]): void => {
       // logger.info({
       //   reasonPath,
       //   reason: JSON.stringify({
