@@ -37,7 +37,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     ...configFileProps,
   };
 
-  const { entryPoints = [], forceInclude = [], ...restConfig } = resolvedConfig;
+  const { entryPoints = [], ...restConfig } = resolvedConfig;
 
   if (restConfig.verbose) {
     logger.level = 'trace';
@@ -68,7 +68,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ]),
       forceInclude: dedupeArray([
         ...(restConfig.sourceMapSupport ? ['source-map-support'] : []),
-        ...forceInclude,
+        ...(resolvedConfig.forceInclude || []),
       ]),
     };
 
@@ -111,10 +111,13 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     //   });
     // }
 
-    logger.debug({ forceInclude }, 'Determining forceInclude paths');
+    logger.debug(
+      { forceInclude: options.forceInclude },
+      'Determining forceInclude paths',
+    );
 
-    const extraGlobDirs = new Set<string>(forceInclude);
-    forceInclude.forEach((name) => {
+    const extraGlobDirs = new Set<string>(options.forceInclude);
+    options.forceInclude?.forEach((name) => {
       getDependencyPathsFromModule(name, base, function shouldInclude(path) {
         const include = !extraGlobDirs.has(path);
         if (include) {
@@ -124,7 +127,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       });
     });
 
-    logger.debug({ additionalPaths: extraGlobDirs }, 'Got additional paths');
+    logger.debug({ extraGlobDirs }, 'Got additional paths');
 
     logger.info(`Archiving files...`);
     await archiveFiles({
