@@ -20,6 +20,10 @@ export function resolveModulePath(id: string, from: string): string {
   );
 }
 
+export function dedupeArray<T extends any>(arr: T[]): T[] {
+  return [...new Set(arr)];
+}
+
 export function getDependencyPathsFromModule(
   name: string,
   base: string,

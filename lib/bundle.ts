@@ -9,9 +9,9 @@ import {
   build,
 } from './build';
 import {
+  dedupeArray,
   getDependencyPathsFromModule,
   maybeMakeAbsolute,
-  resolveModulePath,
   serialPromiseMapAccum,
 } from './utils';
 
@@ -62,10 +62,14 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       entryPoint: absoluteEntryPoint,
       ...restConfig,
       outDir,
-      externals: [
+      externals: dedupeArray([
         ...(restConfig.sourceMapSupport ? ['source-map-support'] : []),
         ...(restConfig.externals || []),
-      ],
+      ]),
+      forceInclude: dedupeArray([
+        ...(restConfig.sourceMapSupport ? ['source-map-support'] : []),
+        ...forceInclude,
+      ]),
     };
 
     const { tmpFile: pkgFile, tmpDir: pkgDir, cleanup } = await build(options);
