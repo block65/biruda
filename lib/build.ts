@@ -1,6 +1,6 @@
 import type { PackageJson, TsConfigJson } from 'type-fest';
 import * as esbuild from 'esbuild';
-import { lstatSync, writeFileSync } from 'fs';
+import { lstatSync, statSync, writeFileSync } from 'fs';
 import { dir } from 'tmp-promise';
 import pkgUp from 'pkg-up';
 import { dirname, resolve } from 'path';
@@ -46,6 +46,11 @@ export async function build(
   options: BirudaBuildOptions,
 ): Promise<{ tmpFile: string; tmpDir: string; cleanup: () => Promise<void> }> {
   const { entryPoint } = options;
+
+  const entryPointStat = statSync(entryPoint);
+  if (!entryPointStat.isFile()) {
+    throw new Error(`Invalid entrypoint ${entryPoint}`);
+  }
 
   // eslint-disable-next-line global-require,import/no-dynamic-require
   // const packageJson: PackageJson = require(resolve(baseDir, 'package.json'));
