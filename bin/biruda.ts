@@ -52,7 +52,7 @@ yargs(hideBin(process.argv))
       }
 
       return cliBundle(argv).catch((err) => {
-        logger.error(err);
+        logger.error(err.stack);
         process.exitCode = 1;
       });
     },
