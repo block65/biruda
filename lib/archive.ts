@@ -159,7 +159,7 @@ export async function archiveDependencies({
       ? {
           gzip: true,
           gzipOptions: {
-            level: -1,
+            level: constants.Z_BEST_SPEED,
           },
         }
       : { zlib: { level: constants.Z_BEST_SPEED } },
