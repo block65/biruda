@@ -1,7 +1,9 @@
 import type { AsyncReturnType } from 'type-fest';
-import { dirname, isAbsolute, resolve } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { readManifestSync } from './deps';
-import { logger } from './logger';
+import { logger as parentLogger } from './logger';
+
+const logger = parentLogger.child({ name: 'utils' });
 
 export function maybeMakeAbsolute(entry: string, baseDir: string): string {
   if (isAbsolute(entry)) {
@@ -27,13 +29,14 @@ export function dedupeArray<T extends any>(arr: T[]): T[] {
 export function getDependencyPathsFromModule(
   name: string,
   base: string,
-  callback: (path: string, name: string) => boolean,
+  descendCallback: (path: string, name: string) => boolean,
+  includeCallback: (path: string, name: string) => void,
   parents: string[] = [],
 ): void {
   logger.debug('[%s] Resolving deps for "%s"', parents.join('->'), name);
   const modulePath = resolveModulePath(name, base);
 
-  if (!callback(modulePath, name)) {
+  if (!descendCallback(modulePath, name)) {
     return;
   }
 
@@ -42,6 +45,16 @@ export function getDependencyPathsFromModule(
   if (!pkgJson) {
     throw new Error(`Unable to locate manifest for ${name}`);
   }
+
+  dedupeArray([
+    // 'package.json',
+    // 'LICENSE',
+    // 'LICENSE.md',
+    ...(pkgJson.files ? pkgJson.files : []),
+    ...(pkgJson.main ? [pkgJson.main] : []),
+  ]).forEach((glob) => {
+    includeCallback(join(modulePath, glob), name);
+  });
 
   const dependencies = Object.keys(pkgJson.dependencies || {});
 
@@ -55,10 +68,13 @@ export function getDependencyPathsFromModule(
 
   dependencies.forEach((pkgDep) => {
     // logger.trace('[%s] Found dep %s', pkgDep, name);
-    getDependencyPathsFromModule(pkgDep, modulePath, callback, [
-      ...parents,
-      name,
-    ]);
+    getDependencyPathsFromModule(
+      pkgDep,
+      modulePath,
+      descendCallback,
+      includeCallback,
+      [...parents, name],
+    );
   });
 }
 

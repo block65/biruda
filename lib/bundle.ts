@@ -1,5 +1,6 @@
-import { dirname, resolve } from 'path';
-import { logger } from './logger';
+import { dirname, relative, resolve } from 'path';
+import { writeFileSync } from 'fs';
+import { logger as parentLogger } from './logger';
 import { traceFiles } from './deps';
 import { archiveFiles } from './archive';
 import {
@@ -14,6 +15,8 @@ import {
   maybeMakeAbsolute,
   serialPromiseMapAccum,
 } from './utils';
+
+const logger = parentLogger.child({ name: 'bundle' });
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
   const configFileProps: BirudaConfigFileProperties = cliArguments.config
@@ -39,10 +42,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const { entryPoints = [], ...restConfig } = resolvedConfig;
 
-  if (restConfig.verbose) {
-    logger.level = 'trace';
-  }
-
   if (entryPoints.length === 0) {
     throw new TypeError('No entryPoints');
   }
@@ -50,9 +49,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   if (entryPoints.length > 1) {
     throw new TypeError('Only 1 entryPoint supported so far');
   }
-
-  // const baseDir = process.cwd();
-  // const baseDir = dirname(entryPoint);
 
   await serialPromiseMapAccum(entryPoints, async (entryPoint) => {
     const absoluteEntryPoint = maybeMakeAbsolute(entryPoint, process.cwd());
@@ -81,81 +77,83 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
     const { files, base } = await traceFiles(pkgFile, {
       originalEntryPoint: absoluteEntryPoint,
-      ignorePackages: resolvedConfig.ignorePackages,
+      ignorePackages: [
+        ...(resolvedConfig.forceInclude || []),
+        ...(resolvedConfig.ignorePackages || []),
+      ],
     });
 
-    // const dependencies = await traceFileDependencies(pkgFile, {
-    //   workingDirectory: dirname(absoluteEntryPoint),
-    //   ignorePackages: resolvedConfig.ignorePackages,
-    // });
-
-    // if (
-    //   resolvedConfig.sourceMapSupport &&
-    //   !dependencies.has('source-map-support')
-    // ) {
-    //   const smpPkgJsonPath = pkgUp.sync({
-    //     cwd: require.resolve('source-map-support', {
-    //       paths: [dirname(absoluteEntryPoint)],
-    //     }),
-    //   });
-
-    //   if (!smpPkgJsonPath) {
-    //     throw new Error('Unable to resolve source-map-support');
-    //   }
-
-    //   dependencies.set('source-map-support@*', {
-    //     name: 'source-map-support',
-    //     version: '*',
-    //     path: dirname(smpPkgJsonPath),
-    //     // files: [],
-    //   });
-    // }
+    writeFileSync(
+      `${__dirname}/kke.json`,
+      JSON.stringify(
+        {
+          files: [...files],
+          ignorePackages: [
+            ...(resolvedConfig.forceInclude || []),
+            ...(resolvedConfig.ignorePackages || []),
+          ],
+        },
+        null,
+        2,
+      ),
+    );
 
     logger.debug(
       { forceInclude: options.forceInclude },
       'Determining forceInclude paths',
     );
 
-    const extraGlobDirs = new Set<string>(options.forceInclude);
+    const extras = new Set<string>();
+    const modulePaths = new Set<string>(options.forceInclude);
     options.forceInclude?.forEach((name) => {
-      getDependencyPathsFromModule(name, base, function shouldInclude(path) {
-        const include = !extraGlobDirs.has(path);
-        if (include) {
-          extraGlobDirs.add(path);
-        }
-        return include;
-      });
+      getDependencyPathsFromModule(
+        name,
+        base,
+        function shouldDescend(modulePath, moduleName) {
+          const include = !modulePaths.has(modulePath);
+          if (include) {
+            logger.trace('[%s] including module %s', moduleName, modulePath);
+            modulePaths.add(modulePath);
+          } else {
+            logger.trace('[%s] ignoring module %s', moduleName, modulePath);
+          }
+          return include;
+        },
+        function includeCallback(absPath) {
+          const relPath = relative(base, absPath);
+          if (!files.has(relPath)) {
+            logger.trace('[%s] including path %s', name, relPath);
+            extras.add(relPath);
+          } else {
+            logger.warn('[%s] already got path %s', name, relPath);
+          }
+        },
+      );
     });
 
-    logger.debug({ extraGlobDirs }, 'Got additional paths');
+    // try and find anything that turned out to be behind a symlink, and then
+    // add what we think might be the symlink
+    options.forceInclude?.forEach((name) => {
+      if (
+        ![...extras].find((file) => file.startsWith(`node_modules/${name}`))
+      ) {
+        logger.warn(
+          '%s did not have any files, assuming symlink and adding top level',
+          name,
+        );
+        extras.add(`node_modules/${name}`);
+      }
+    });
 
     logger.info(`Archiving files...`);
     await archiveFiles({
-      base,
       pkgDir,
-      outDir,
       files,
-      extraGlobDirs: [...extraGlobDirs],
+      extras,
+      outDir,
+      base,
       format: resolvedConfig.archiveFormat,
     });
-
-    // logger.info({ dependencies }, `Archiving dependencies...`);
-    // await archiveDependencies({
-    //   pkgDir,
-    //   dependencies: Array.from(dependencies.values()),
-    //   // dependencies: await traceDependencies(
-    //   //   Object.fromEntries(
-    //   //     Array.from(dependencies.entries()).map(([id, { version, files }]) => [
-    //   //       id,
-    //   //       version,
-    //   //       files,
-    //   //     ]),
-    //   //   ) || {},
-    //   //   dirname(entryPoint),
-    //   // ),
-    //   outDir,
-    //   format: resolvedConfig.archiveFormat,
-    // });
 
     logger.info(`Done. Files are at %s`, outDir);
 

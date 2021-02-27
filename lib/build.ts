@@ -52,8 +52,6 @@ export async function build(
     throw new Error(`Invalid entrypoint ${entryPoint}`);
   }
 
-  // eslint-disable-next-line global-require,import/no-dynamic-require
-  // const packageJson: PackageJson = require(resolve(baseDir, 'package.json'));
   const packageJsonPath = await pkgUp({
     cwd: dirname(entryPoint),
   });
@@ -87,7 +85,12 @@ export async function build(
   const finalEsBuildOptions: esbuild.BuildOptions = {
     platform: options.platform === 'browser' ? 'browser' : 'node',
     logLevel: options.verbose ? 'info' : 'error',
-    external: [...(options.ignorePackages || []), ...(options.externals || [])],
+    external: [
+      ...(options.ignorePackages || []),
+      ...(options.externals || []),
+      // really doesnt play nice with biruda (uses mjs) needs investigation, it might be fixable
+      ...['decimal.js'],
+    ],
     entryPoints: [entryPoint], // [maybeMakeAbsolute(entryPoint, baseDir)],
     outfile: esBuildOutputFilePath,
     // metafile: '/tmp/meta.json',

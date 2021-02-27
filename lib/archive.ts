@@ -1,16 +1,18 @@
 import archiver from 'archiver';
-import { createWriteStream, existsSync, lstatSync } from 'fs';
-import { basename, join, relative, resolve } from 'path';
+import { createWriteStream, existsSync, lstatSync, realpathSync } from 'fs';
+import { dirname, join, relative } from 'path';
 import { constants } from 'zlib';
-import { logger } from './logger';
-import { Dependency } from './deps';
-import { basicThrottle } from './utils';
+import { basicThrottle, maybeMakeAbsolute } from './utils';
+import { logger as parentLogger } from './logger';
 
+const logger = parentLogger.child({ name: 'archive' });
+
+const regex = /.*?(node_modules.*)/;
 function maybeReducePathToNodeModules(path: string, fallback: string): string {
-  const regex = /.*?(node_modules.*)/;
   if (path.match(regex)) {
     return path.replace(regex, '$1');
   }
+  logger.warn('%s hit fallback', path);
   return `node_modules/${fallback}`;
 }
 
@@ -18,17 +20,15 @@ export async function archiveFiles({
   base,
   pkgDir,
   outDir,
-  pkgFiles = [],
-  files = [],
-  extraGlobDirs = [],
+  files = new Set(),
+  extras = new Set(),
   format = 'tar',
 }: {
   base: string;
   pkgDir: string;
   outDir: string;
-  pkgFiles?: string[];
-  files?: string[];
-  extraGlobDirs?: string[];
+  files: Set<string>;
+  extras: Set<string>;
   format?: 'zip' | 'tar';
 }) {
   const isTar = format === 'tar';
@@ -38,7 +38,7 @@ export async function archiveFiles({
       ? {
           gzip: true,
           gzipOptions: {
-            level: -1,
+            level: constants.Z_BEST_SPEED,
           },
         }
       : { zlib: { level: constants.Z_BEST_SPEED } },
@@ -66,7 +66,7 @@ export async function archiveFiles({
     'progress',
     basicThrottle((progress) => {
       logger.trace(
-        'Progress: %s of %s files archived',
+        'Progress: %s of ~%s files archived',
         progress.entries.processed,
         progress.entries.total,
       );
@@ -80,9 +80,8 @@ export async function archiveFiles({
   // 'close' event is fired only when a file descriptor is involved
   output.on('close', () => {
     logger.info(
-      `Archive is ~${new Intl.NumberFormat().format(
-        Math.round(archive.pointer() / 1024),
-      )}kb`,
+      `Archive is ~%skb`,
+      new Intl.NumberFormat().format(Math.round(archive.pointer() / 1024)),
     );
     logger.trace(
       'Archiver has been finalized and the output file descriptor has closed.',
@@ -99,37 +98,10 @@ export async function archiveFiles({
   // pipe archive data to the output
   archive.pipe(output);
 
-  logger.trace('Adding pkgDir %s', pkgDir);
+  logger.trace('Archiving pkgDir %s', pkgDir);
   archive.directory(pkgDir, false);
 
-  logger.trace({ pkgFiles }, 'Adding %d extra pkgFiles', pkgFiles.length);
-
-  pkgFiles.forEach((file) => {
-    archive.file(join(base, file), {
-      name: basename(file),
-      // prefix: base,
-    });
-  });
-
-  logger.trace(
-    // { extraGlobDirs },
-    'Adding %d extra dirs via glob',
-    extraGlobDirs.length,
-  );
-
-  extraGlobDirs.forEach((dir) => {
-    archive.glob(
-      '**/*',
-      {
-        cwd: dir,
-      },
-      {
-        prefix: relative(base, dir),
-      },
-    );
-  });
-
-  logger.info(`Adding %d files...`, files.length);
+  logger.info(`Adding %d files...`, files.size);
   files.forEach((file) => {
     archive.file(join(base, file), {
       name: file,
@@ -137,202 +109,64 @@ export async function archiveFiles({
     });
   });
 
-  logger.trace('Finalizing archive');
-  return archive.finalize();
-}
+  logger.trace('Archiving %d extras', extras.size);
 
-export async function archiveDependencies({
-  dependencies,
-  pkgDir,
-  outDir,
-  format = 'tar',
-}: {
-  dependencies: Dependency[];
-  pkgDir: string;
-  outDir: string;
-  format?: 'zip' | 'tar';
-}) {
-  const isTar = format === 'tar';
-  const archive = archiver(
-    format,
-    isTar
-      ? {
-          gzip: true,
-          gzipOptions: {
-            level: constants.Z_BEST_SPEED,
-          },
-        }
-      : { zlib: { level: constants.Z_BEST_SPEED } },
-  );
+  extras.forEach((file) => {
+    const looksGlobbish = file.includes('*');
+    const absolutePath = maybeMakeAbsolute(file, base);
+    const exists = !looksGlobbish && existsSync(absolutePath);
 
-  const archiveFileName = `pkg.${format}${isTar ? '.gz' : ''}`;
+    if (exists) {
+      const stats = lstatSync(absolutePath);
+      if (stats.isDirectory()) {
+        const prefix = maybeReducePathToNodeModules(absolutePath, file);
 
-  archive.glob('**/*', {
-    cwd: pkgDir,
-  });
+        logger.trace('Archiving %s into %s (using dir)', file, prefix);
+        archive.directory(absolutePath, prefix);
+      } else if (stats.isFile()) {
+        const prefix = maybeReducePathToNodeModules(absolutePath, file);
+        // const prefix = `node_modules/${name}`;
 
-  // good practice to catch warnings (ie stat failures and other non-blocking errors)
-  archive.on('warning', (err) => {
-    if (err.code === 'ENOENT') {
-      logger.warn({ err }, err.message);
-    } else {
-      // throw error
-      throw err;
-    }
-  });
+        logger.trace('Archiving %s as %s (using file)', file, prefix);
+        archive.file(absolutePath, {
+          name: prefix,
+        });
+      } else if (stats.isSymbolicLink()) {
+        // const prefix = maybeReducePathToNodeModules(absolutePath, file);
 
-  // good practice to catch this error explicitly
-  archive.on('error', (err) => {
-    logger.error(err, 'Archiver error');
-    archive.abort();
-    process.exitCode = 1;
-    // throw err;
-  });
+        // WARN: some weird symlink relativity thing that I dont understand
+        // means we need to go up one level before we get the relative
+        // otherwise it's off by one
+        const symlinkTarget = relative(
+          dirname(absolutePath),
+          realpathSync(absolutePath),
+        );
 
-  archive.on(
-    'progress',
-    basicThrottle((progress) => {
-      logger.trace(
-        'Progress: %s of %s entries archived',
-        progress.entries.processed,
-        progress.entries.total,
-      );
-    }, 300),
-  );
+        logger.trace(
+          'Archiving symlink %s -> %s (using symlink)',
+          file,
+          symlinkTarget,
+        );
 
-  const output = createWriteStream(`${outDir}/${archiveFileName}`);
+        archive.symlink(file, symlinkTarget);
+      } else {
+        logger.warn('Ignored %s. Not a dir or file', file);
+      }
+    } else if (looksGlobbish) {
+      logger.trace('Archiving glob %s (using glob with base %s)', file, base);
 
-  // listen for all archive data to be written
-  // 'close' event is fired only when a file descriptor is involved
-  output.on('close', () => {
-    logger.info(
-      `Archive is ~${new Intl.NumberFormat().format(
-        Math.round(archive.pointer() / 1024),
-      )}kb`,
-    );
-    logger.trace(
-      'Archiver has been finalized and the output file descriptor has closed.',
-    );
-  });
-
-  // This event is fired when the data source is drained no matter what was the data source.
-  // It is not part of this library but rather from the NodeJS Stream API.
-  // @see: https://nodejs.org/api/stream.html#stream_event_end
-  output.on('end', () => {
-    logger.trace('Data has been drained');
-  });
-
-  logger.trace('Piping archiver into output');
-  // pipe archive data to the output
-  archive.pipe(output);
-
-  logger.trace('Archiving dependencies');
-
-  dependencies.forEach(({ path, name, files, version }) => {
-    // const moduleBasePathForArchive = join('node_modules', name);
-
-    const id = `${name}@${version}`;
-
-    if (!files) {
-      const destPath = maybeReducePathToNodeModules(path, name);
-      logger.trace('[%s] No files[]. Archiving %s into %s', id, path, destPath);
-      // archive.directory(path, destPath);
       archive.glob(
-        `**/*`,
+        file,
         {
-          cwd: path,
-          debug: true,
-          ignore: ['node_modules', '*.tsbuildinfo'],
+          cwd: base,
         },
         {
-          prefix: destPath,
+          // prefix,
         },
       );
-      return;
+    } else {
+      logger.warn('File %s doesnt exist and isnt globbish, ignoring', file);
     }
-
-    const pkgJsonPrefix = maybeReducePathToNodeModules(path, name);
-
-    // add the package.json
-    logger.debug(
-      { path },
-      '[%s] Archiving package.json into %s',
-      id,
-      pkgJsonPrefix,
-    );
-
-    archive.file(resolve(path, 'package.json'), {
-      name: 'package.json',
-      prefix: pkgJsonPrefix,
-    });
-
-    files
-      ?.filter((file) => file !== 'package.json') // we already added it
-      .forEach((entry) => {
-        // archive.glob(resolve(basePath, file));
-
-        const absoluteFilePath = join(path, entry);
-        const looksGlobbish = absoluteFilePath.includes('*');
-        const exists = !looksGlobbish && existsSync(absoluteFilePath);
-
-        if (exists) {
-          const stats = lstatSync(absoluteFilePath);
-          if (stats.isDirectory()) {
-            const prefix = maybeReducePathToNodeModules(absoluteFilePath, name);
-
-            logger.debug(
-              '[%s] Archiving %s into %s (using dir)',
-              id,
-              entry,
-              prefix,
-            );
-            // logger.trace({ absoluteFilePath }, 'directory');
-            archive.directory(absoluteFilePath, prefix);
-          } else if (stats.isFile()) {
-            const prefix = maybeReducePathToNodeModules(absoluteFilePath, name);
-            // const prefix = `node_modules/${name}`;
-
-            logger.debug(
-              '[%s] Archiving %s as %s (using file)',
-              id,
-              entry,
-              prefix,
-            );
-            // logger.trace({ absoluteFilePath }, 'file');
-            archive.file(absoluteFilePath, {
-              name: prefix,
-            });
-          }
-        } else {
-          if (!looksGlobbish) {
-            logger.warn('File %s doesnt exist, trying glob instead', entry);
-          }
-
-          const prefix = maybeReducePathToNodeModules(path, name);
-          // const prefix = `node_modules/${name}`;
-
-          logger.debug(
-            '[%s] Archiving %s into %s (using glob)',
-            id,
-            entry,
-            prefix,
-          );
-          // logger.trace({ absoluteFilePath, exists, path, entry }, 'glob');
-
-          // if "file" doesnt exist, it might be a glob. Try it.
-          archive.glob(
-            entry,
-            {
-              cwd: path,
-            },
-            {
-              prefix,
-            },
-          );
-        }
-
-        // logger.trace({ basePath, file, resolved: resolve(basePath, file) });
-      });
   });
 
   logger.trace('Finalizing archive');

@@ -1,21 +1,14 @@
 /* eslint-disable global-require,import/no-dynamic-require */
 import { dirname, join, normalize, relative } from 'path';
-import { nodeFileTrace } from '@vercel/nft';
+import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
 import pkgUp from 'pkg-up';
 import { existsSync, readFileSync } from 'fs';
 import type { PackageJson } from 'type-fest';
 import micromatch from 'micromatch';
 import mem from 'mem';
-import { logger } from './logger';
+import { logger as parentLogger } from './logger';
 
-// import readPkgUp from 'read-pkg-up';
-// interface Child {
-//   name: string;
-//   children: Child[];
-//   hint: null;
-//   color: 'bold';
-//   depth: 0;
-// }
+const logger = parentLogger.child({ name: 'deps' });
 
 export interface RecursiveDependency extends Dependency {
   deps: RecursiveDependency[];
@@ -27,18 +20,6 @@ export interface Dependency {
   files?: string[];
   path: string;
 }
-
-// interface YarnListOutput {
-//   data: {
-//     trees: Child[];
-//   };
-// }
-
-// export interface Dependency {
-//   path: string;
-//   version: string;
-//   files?: string[];
-// }
 
 export type DependencyMap = Map<string, Dependency>;
 
@@ -130,17 +111,6 @@ export function findWorkspaceRoot(initial = process.cwd()) {
   return null;
 }
 
-// function getPackageDep(id: string, version: string): Dependency {
-//   const sourceMapSupportManifestPath = require.resolve(`${id}/package.json`);
-//   const sourceMapSupportManifest: PackageJson.PackageJsonStandard = require(sourceMapSupportManifestPath);
-//   const sourceMapSupportBase = dirname(sourceMapSupportManifestPath);
-//   return {
-//     basePath: sourceMapSupportBase,
-//     version,
-//     files: sourceMapSupportManifest.files || ['**/*'],
-//   };
-// }
-
 function flattenDeps(initialChildren: RecursiveDependency[]): Dependency[] {
   // console.log({ children });
   return initialChildren.flatMap((child): Dependency[] => {
@@ -188,20 +158,6 @@ export async function traceDependencies(
   ): RecursiveDependency[] {
     return Object.entries(deps).map(
       ([name, version]): RecursiveDependency => {
-        // console.log({ basePath, cwd, name, version });
-
-        // const modulePackageJsonPath = require.resolve(`${name}/package.json`, {
-        //   paths: [basePath],
-        // });
-
-        // const modulePackageJsonPath = pkgUp.sync({
-        //   cwd: dirname(
-        //     require.resolve(name, {
-        //       paths: [basePath],
-        //     }),
-        //   ),
-        // });
-
         const modulePackageJsonPath = resolvePackageJson(name, basePath);
 
         if (!modulePackageJsonPath) {
@@ -211,22 +167,10 @@ export async function traceDependencies(
           );
         }
 
-        // console.log({ modulePackageJsonPath });
-
         const packageJson = require(modulePackageJsonPath);
-
-        // if (packageJson.dependencies) {
-        //   console.log(
-        //     'Will recurse from %s with base %s',
-        //     packageJson.name,
-        //     dirname(modulePackageJsonPath),
-        //   );
-        // }
 
         const nextPath = dirname(modulePackageJsonPath);
         const beenHere = circuitBreaker.has(nextPath);
-
-        // console.log({ nextPath, beenHere });
 
         // if we've already been here, we just return empty children as
         // a previous iteration has already returned the children
@@ -258,92 +202,8 @@ export async function traceDependencies(
     );
   }
 
-  // console.log(
-  //   inspect(resolvePaths(parsedOutput.data.trees, cwd), {
-  //     depth: Infinity,
-  //     colors: true,
-  //   }),
-  // );
-
   return flattenDeps(recursiveResolveDependencies(initialDeps, startPath));
 }
-
-// async function collectDeps(
-//   cwd: string,
-//   selfPackageName: string,
-//   mode = 'production',
-// ): Promise<ResolvedChild[]> {
-//   const command = /^win/.test(process.platform) ? 'yarn.cmd' : 'yarn';
-//
-//   const yarnListProcess = spawnSync(
-//     command,
-//     ['list', `--depth=${0}`, '--json'],
-//     {
-//       cwd,
-//       env: {
-//         ...process.env,
-//         NODE_ENV: mode,
-//       },
-//     },
-//   );
-//
-//   if (yarnListProcess.error) {
-//     logger.warn(yarnListProcess.error);
-//     throw yarnListProcess.error;
-//   }
-//
-//   // console.log(processOutput);
-//
-//   const parsedOutput: YarnListOutput = JSON.parse(
-//     yarnListProcess.stdout.toString(),
-//   );
-//
-//   // console.log({ length: parsedOutput.data.trees.length });
-//
-//   const isIgnored = (child: Child) => {
-//     const [, name, version] = child.name.split(/(.*)@(.*$)/);
-//
-//     return (
-//       name.startsWith('@types') ||
-//       name === 'type-fest' ||
-//       name === 'fsevents' ||
-//       name === selfPackageName
-//     );
-//   };
-//
-//   function resolvePaths(children: Child[], path: string): ResolvedChild[] {
-//     return children
-//       .filter((child) => !isIgnored(child))
-//       .map(
-//         (child): ResolvedChild => {
-//           const [, name, version] = child.name.split(/(.*)@(.*$)/);
-//
-//           // console.log({ path, name, version, child });
-//
-//           return {
-//             name,
-//             version,
-//             path: require.resolve(`${name}`, {
-//               paths: [path, cwd],
-//             }),
-//             children: resolvePaths(
-//               child.children,
-//               resolve(path, 'node_modules', name),
-//             ),
-//           };
-//         },
-//       );
-//   }
-//
-//   // console.log(
-//   //   inspect(resolvePaths(parsedOutput.data.trees, cwd), {
-//   //     depth: Infinity,
-//   //     colors: true,
-//   //   }),
-//   // );
-//
-//   return resolvePaths(parsedOutput.data.trees, cwd);
-// }
 
 export async function traceFiles(
   entryPoint: string,
@@ -352,7 +212,11 @@ export async function traceFiles(
     verbose?: boolean;
     ignorePackages?: string[];
   },
-): Promise<{ files: string[]; base: string }> {
+): Promise<{
+  files: Set<string>;
+  base: string;
+  reasons: NodeFileTraceReasons;
+}> {
   const { originalEntryPoint } = options;
 
   const manifestFilename = await pkgUp({
@@ -378,7 +242,7 @@ export async function traceFiles(
     base,
     processCwd,
     log: options.verbose,
-    ignore: options.ignorePackages,
+    ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
     // paths: [base],
   });
 
@@ -400,14 +264,6 @@ export async function traceFiles(
     });
   }
 
-  // const relativeManifestName = relative(base, manifestFilename);
-
-  // const files = Object.entries(fileList)
-  //   .filter(([reasonPath, reason]) => {
-  //     return !reason.ignored && reasonPath !== relativeManifestName;
-  //   })
-  //   .map(([reasonPath]): string => reasonPath);
-
   // find and exclude the initial entry point
   const [resolvedEntryPoint] = Object.entries(reasons)
     .filter(([, reason]) => reason.type === 'initial')
@@ -415,7 +271,8 @@ export async function traceFiles(
 
   return {
     base,
-    files: fileList.filter((file) => file !== resolvedEntryPoint.file),
+    reasons,
+    files: new Set(fileList.filter((file) => file !== resolvedEntryPoint.file)),
   };
 }
 
@@ -472,15 +329,6 @@ export async function traceFileDependencies(
 
   Object.entries(reasons)
     .filter(([reasonPath, reason]) => {
-      // reason.type === 'resolve'
-      // reason.type !== 'initial'
-      // logger.info({
-      //   reasonPath,
-      //   reason: JSON.stringify({
-      //     type: reason.type,
-      //     ignores: reason.ignored,
-      //   }),
-      // });
       return (
         !reason.ignored &&
         reason.type === 'resolve' &&
@@ -490,15 +338,6 @@ export async function traceFileDependencies(
       );
     })
     .forEach(([reasonPath]): void => {
-      // logger.info({
-      //   reasonPath,
-      //   reason: JSON.stringify({
-      //     type: reason.type,
-      //     ignores: reason.ignored,
-      //     // parents: reason.parents,
-      //   }),
-      // });
-
       const absReasonPath = join(workspaceRoot, reasonPath);
       const [basePath, name] =
         absReasonPath.match(
@@ -547,14 +386,6 @@ export async function traceFileDependencies(
           throw new Error(`Module ${name} manifest is invalid`);
         }
 
-        // logger.trace({
-        //   version,
-        //   files,
-        //   main,
-        //   browser,
-        //   module,
-        // });
-
         return [
           `${manifest.name}@${manifest.version}`,
           {
@@ -562,21 +393,12 @@ export async function traceFileDependencies(
             path: basePath,
             version: manifest.version,
             files: manifest.files,
-            // files: Array.from(
-            //   new Set(manifest.files || []),
-            //   // new Set([
-            //   //   ...(manifest.main ? [manifest.main] : []),
-            //   //   ...(manifest.files || []),
-            //   //   /* browser, module, */
-            //   // ]),
-            // ).filter(Boolean),
           },
         ];
       })
       .sort(([aName], [bName]) => aName.localeCompare(bName)),
   );
 
-  // console.log(dependencies);
   logger.debug('%s dependencies traced.', dependencies.size);
 
   return dependencies;
