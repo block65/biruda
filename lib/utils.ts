@@ -33,7 +33,9 @@ export function getDependencyPathsFromModule(
   includeCallback: (path: string, name: string) => void,
   parents: string[] = [],
 ): void {
-  logger.debug('[%s] Resolving deps for "%s"', parents.join('->'), name);
+  const logPrefixString = [name, parents].join('->');
+
+  logger.debug('[%s] Resolving deps', logPrefixString, name);
   const modulePath = resolveModulePath(name, base);
 
   if (!descendCallback(modulePath, name)) {
@@ -46,19 +48,33 @@ export function getDependencyPathsFromModule(
     throw new Error(`Unable to locate manifest for ${name}`);
   }
 
+  includeCallback(join(modulePath, 'package.json'), name);
+
   dedupeArray([
     // 'package.json',
     // 'LICENSE',
     // 'LICENSE.md',
-    ...(pkgJson.files ? pkgJson.files : []),
-    ...(pkgJson.main ? [pkgJson.main] : []),
+    ...(pkgJson.files || []),
   ]).forEach((glob) => {
     includeCallback(join(modulePath, glob), name);
   });
 
+  if (pkgJson.main) {
+    includeCallback(join(modulePath, pkgJson.main), name);
+  }
+
+  if (!pkgJson.files) {
+    logger.trace('[%s] No files[] in  manifest, adding all', logPrefixString);
+    includeCallback(modulePath, name);
+  }
+
   const dependencies = Object.keys(pkgJson.dependencies || {});
 
-  logger.trace('[%s] Found %d deps', name, Object.keys(dependencies).length);
+  logger.trace(
+    '[%s] Found %d deps',
+    logPrefixString,
+    Object.keys(dependencies).length,
+  );
 
   // at leaf node
   if (dependencies.length === 0) {
