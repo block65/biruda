@@ -1,5 +1,4 @@
 import { dirname, relative, resolve } from 'path';
-import { writeFileSync } from 'fs';
 import { logger as parentLogger } from './logger';
 import { traceFiles } from './deps';
 import { archiveFiles } from './archive';
@@ -70,11 +69,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
     const { tmpFile: pkgFile, tmpDir: pkgDir, cleanup } = await build(options);
 
-    logger.info(
-      `Tracing remaining dependencies. wd: %s`,
-      dirname(absoluteEntryPoint),
-    );
-
     const { files, base } = await traceFiles(pkgFile, {
       originalEntryPoint: absoluteEntryPoint,
       ignorePackages: [
@@ -83,24 +77,9 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ],
     });
 
-    writeFileSync(
-      `${__dirname}/kke.json`,
-      JSON.stringify(
-        {
-          files: [...files],
-          ignorePackages: [
-            ...(resolvedConfig.forceInclude || []),
-            ...(resolvedConfig.ignorePackages || []),
-          ],
-        },
-        null,
-        2,
-      ),
-    );
-
-    logger.debug(
-      { forceInclude: options.forceInclude },
-      'Determining forceInclude paths',
+    logger.info(
+      'Force including %d modules',
+      options.forceInclude?.length || 0,
     );
 
     const extras = new Set<string>();
@@ -112,10 +91,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         function shouldDescend(modulePath, moduleName) {
           const include = !modulePaths.has(modulePath);
           if (include) {
-            logger.trace('[%s] including module %s', moduleName, modulePath);
+            logger.trace('[%s] processing %s', moduleName, modulePath);
             modulePaths.add(modulePath);
           } else {
-            logger.trace('[%s] ignoring module %s', moduleName, modulePath);
+            logger.trace('[%s] ignoring %s', moduleName, modulePath);
           }
           return include;
         },
@@ -125,7 +104,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
             logger.trace('[%s] including path %s', name, relPath);
             extras.add(relPath);
           } else {
-            logger.warn('[%s] already got path %s', name, relPath);
+            logger.trace('[%s] already got path %s', name, relPath);
           }
         },
       );
@@ -137,7 +116,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       if (
         ![...extras].find((file) => file.startsWith(`node_modules/${name}`))
       ) {
-        logger.warn(
+        logger.trace(
           '%s did not have any files, assuming symlink and adding top level',
           name,
         );
@@ -145,7 +124,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       }
     });
 
-    logger.info(`Archiving files...`);
     await archiveFiles({
       pkgDir,
       files,

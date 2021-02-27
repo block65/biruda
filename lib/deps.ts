@@ -230,7 +230,7 @@ export async function traceFiles(
   const base = findWorkspaceRoot(originalEntryPoint) || originalEntryPoint;
   const processCwd = dirname(manifestFilename);
 
-  logger.info('Calculating dependencies...');
+  logger.info('Tracing dependencies...');
   logger.trace(
     'Looking for dependencies base: %s, entry: %s, wd: %s',
     base,
@@ -254,12 +254,12 @@ export async function traceFiles(
       if (value.lineText) {
         logger.warn(
           { value },
-          `Warning: ${value.message.trim()} caused by ${value.lineText} in ${
+          `${value.message.trim()} caused by ${value.lineText} in ${
             value.file
           }:${value.line}:${value.column}`,
         );
       } else {
-        logger.warn(`Warning: ${value.message.trim()}`);
+        logger.warn(value.message.trim());
       }
     });
   }

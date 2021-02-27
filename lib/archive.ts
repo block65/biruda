@@ -31,6 +31,8 @@ export async function archiveFiles({
   extras: Set<string>;
   format?: 'zip' | 'tar';
 }) {
+  logger.info(`Archiving %d files and %d extras...`, files.size, extras.size);
+
   const isTar = format === 'tar';
   const archive = archiver(
     format,
@@ -101,7 +103,7 @@ export async function archiveFiles({
   logger.trace('Archiving pkgDir %s', pkgDir);
   archive.directory(pkgDir, false);
 
-  logger.info(`Adding %d files...`, files.size);
+  logger.trace(`Adding %d files...`, files.size);
   files.forEach((file) => {
     archive.file(join(base, file), {
       name: file,
@@ -165,7 +167,7 @@ export async function archiveFiles({
         },
       );
     } else {
-      logger.warn('File %s doesnt exist and isnt globbish, ignoring', file);
+      logger.trace('File %s doesnt exist and isnt globbish, ignoring', file);
     }
   });
 
