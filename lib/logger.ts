@@ -2,7 +2,7 @@ import createLogger from 'pino';
 import supportsColor from 'supports-color';
 
 export const logger = createLogger({
-  level: 'info',
+  level: 'trace',
   prettyPrint: {
     colorize: supportsColor.stdout,
     translateTime: true,
@@ -11,5 +11,7 @@ export const logger = createLogger({
 });
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {
-  console.log('%s (%d) was changed to %s (%d)', lvl, val, prevLvl, prevVal);
+  if (lvl !== prevLvl) {
+    console.log('%s (%d) was changed to %s (%d)', lvl, val, prevLvl, prevVal);
+  }
 });
