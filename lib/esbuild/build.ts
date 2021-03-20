@@ -4,43 +4,9 @@ import { lstatSync, statSync, writeFileSync } from 'fs';
 import { dir } from 'tmp-promise';
 import pkgUp from 'pkg-up';
 import { dirname, resolve } from 'path';
-import { logger } from './logger';
-
-// all optional because they might be on command like
-export interface BirudaConfigFileProperties {
-  entryPoints?: string[];
-  verbose?: boolean;
-  outDir?: string;
-  platform?: string;
-  externals?: string[];
-  forceInclude?: string[];
-  ignorePackages?: string[];
-  archiveFormat?: 'zip' | 'tar';
-  sourceMapSupport?: boolean;
-}
-
-export interface BirudaCliArguments {
-  config?: string;
-  verbose?: boolean;
-  output?: string;
-  // baseDir?: string;
-  entrypoint?: string[];
-  archiveFormat?: string;
-  forceInclude?: string[];
-  sourceMapSupport?: boolean;
-}
-
-export interface BirudaBuildOptions {
-  verbose?: boolean;
-  outDir: string;
-  entryPoint: string;
-  // baseDir: string;
-  platform: string;
-  externals?: string[];
-  ignorePackages?: string[];
-  forceInclude?: string[];
-  sourceMapSupport?: boolean;
-}
+import { logger } from '../logger';
+import { BirudaBuildOptions } from '../types';
+import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard';
 
 export async function build(
   options: BirudaBuildOptions,
@@ -78,31 +44,43 @@ export async function build(
     unsafeCleanup: true,
   });
 
-  // process.on('beforeExit', cleanup);
+  process.on('beforeExit', cleanup);
+
+  const externals: (string | RegExp)[] = [
+    ...(options.ignorePackages || []),
+    ...(options.externals || []),
+    // really doesnt play nice with biruda (uses mjs) needs investigation, it might be fixable
+    ...['decimal.js'],
+  ];
+
+  logger.trace({ externals }, 'Resolved externals');
 
   const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
   const finalEsBuildOptions: esbuild.BuildOptions = {
     platform: options.platform === 'browser' ? 'browser' : 'node',
     logLevel: options.verbose ? 'info' : 'error',
-    external: [
-      ...(options.ignorePackages || []),
-      ...(options.externals || []),
-      // really doesnt play nice with biruda (uses mjs) needs investigation, it might be fixable
-      ...['decimal.js'],
-    ],
+    external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints: [entryPoint], // [maybeMakeAbsolute(entryPoint, baseDir)],
     outfile: esBuildOutputFilePath,
     // metafile: '/tmp/meta.json',
+    absWorkingDir: dirname(entryPoint),
     bundle: true,
     minify: false,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: true, // 'external',
-    errorLimit: 1,
+    // errorLimit: 1,
     define: {
       NODE_ENV: 'production',
     },
+    plugins: [
+      externalsRegExpPlugin({
+        externals: externals.filter(
+          (ext): ext is RegExp => ext instanceof RegExp,
+        ),
+      }),
+    ],
   };
 
   logger.info('Building entryPoints %s ...', entryPoint);
