@@ -58,4 +58,5 @@ yargs(hideBin(process.argv))
     },
   )
   .demandCommand(1, 'You need at least one command')
+  .strict()
   .help().argv;
