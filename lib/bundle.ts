@@ -6,14 +6,14 @@ import {
   BirudaBuildOptions,
   BirudaCliArguments,
   BirudaConfigFileProperties,
-  build,
-} from './build';
+} from './types';
 import {
   dedupeArray,
   getDependencyPathsFromModule,
   maybeMakeAbsolute,
   serialPromiseMapAccum,
 } from './utils';
+import { build } from './esbuild/build';
 
 const logger = parentLogger.child({ name: 'bundle' });
 
@@ -46,7 +46,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   }
 
   if (entryPoints.length > 1) {
-    throw new TypeError('Only 1 entryPoint supported so far');
+    throw new TypeError('Only 1 entryPoint supported right now');
   }
 
   await serialPromiseMapAccum(entryPoints, async (entryPoint) => {
