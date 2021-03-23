@@ -8,9 +8,9 @@
     "biruda": "dist/bin/biruda.js"
   },
   "files": [
-    "dist/*/**.js",
-    "dist/*/**.d.ts",
-    "LICENSE.md"
+    "/dist/**/*.js",
+    "/dist/**/*.d.ts",
+    "/LICENSE.md"
   ],
   "scripts": {
     "build": "tsc",
