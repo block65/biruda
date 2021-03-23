@@ -4,7 +4,7 @@ import supportsColor from 'supports-color';
 export const logger = createLogger({
   level: 'trace',
   prettyPrint: {
-    colorize: supportsColor.stdout,
+    colorize: !!supportsColor.stdout,
     translateTime: true,
     ignore: 'hostname,pid',
   },
