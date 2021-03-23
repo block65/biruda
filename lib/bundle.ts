@@ -1,4 +1,5 @@
 import { dirname, relative, resolve } from 'path';
+import { promises as fsPromises } from 'fs';
 import { logger as parentLogger } from './logger';
 import { traceFiles } from './deps';
 import { archiveFiles } from './archive';
@@ -31,6 +32,11 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   if (!outDir) {
     throw new TypeError('No outDir');
   }
+
+  // archiver finalize() exits without error if the outDir doesnt exist
+  await fsPromises.mkdir(outDir, {
+    recursive: true,
+  });
 
   const resolvedConfig = {
     entryPoints: cliArguments.entrypoint || configFileProps.entryPoints,
