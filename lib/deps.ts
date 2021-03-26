@@ -1,5 +1,5 @@
 /* eslint-disable global-require,import/no-dynamic-require */
-import { dirname, join, normalize, relative } from 'path';
+import { dirname, join, normalize, relative, resolve } from 'path';
 import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
 import pkgUp from 'pkg-up';
 import { existsSync, readFileSync } from 'fs';
@@ -57,7 +57,7 @@ export const readManifestSync = mem(readManifestSyncInner, {
 });
 
 export function findWorkspaceRoot(initial = process.cwd()) {
-  logger.debug('Finding workspace root from %s', initial);
+  logger.trace('Finding workspace root from %s', initial);
 
   let previousDirectory = null;
   let currentDirectory = normalize(initial);
@@ -73,7 +73,7 @@ export function findWorkspaceRoot(initial = process.cwd()) {
       if (workspaces) {
         logger.trace(
           { workspaces },
-          'Found  workspaces in %s',
+          'Found workspaces in %s',
           currentDirectory,
         );
 
@@ -82,17 +82,17 @@ export function findWorkspaceRoot(initial = process.cwd()) {
           relativePath === '' ||
           micromatch([relativePath], workspaces, { bash: true }).length > 0
         ) {
-          logger.debug(
-            { list: [relativePath], patterns: workspaces },
-            'Success! %s',
+          logger.trace(
+            { patterns: workspaces },
+            'Using workspace root at %s',
             currentDirectory,
           );
 
           return currentDirectory;
         }
 
-        logger.debug(
-          { list: [relativePath], patterns: workspaces },
+        logger.trace(
+          { relativePath, patterns: workspaces },
           'Workspace doesnt include me %s',
           currentDirectory,
         );
@@ -206,9 +206,9 @@ export async function traceDependencies(
 }
 
 export async function traceFiles(
-  entryPoint: string,
+  entryPoints: string[],
   options: {
-    originalEntryPoint: string;
+    baseDir: string;
     verbose?: boolean;
     ignorePackages?: string[];
   },
@@ -217,34 +217,28 @@ export async function traceFiles(
   base: string;
   reasons: NodeFileTraceReasons;
 }> {
-  const { originalEntryPoint } = options;
+  const { baseDir } = options;
 
-  const manifestFilename = await pkgUp({
-    cwd: dirname(originalEntryPoint),
-  });
+  const workspaceRoot = findWorkspaceRoot(baseDir) || baseDir;
+  // const processCwd = dirname(manifestFilename);
 
-  if (!manifestFilename) {
-    throw new Error('Unreadable manifest');
-  }
-
-  const base = findWorkspaceRoot(originalEntryPoint) || originalEntryPoint;
-  const processCwd = dirname(manifestFilename);
-
-  logger.info('Tracing dependencies...');
-  logger.trace(
-    'Looking for dependencies base: %s, entry: %s, wd: %s',
-    base,
-    relative(base, entryPoint),
-    relative(base, processCwd),
+  logger.info(
+    entryPoints,
+    'Tracing dependencies using base: %s, workspace: %s',
+    relative(workspaceRoot, baseDir),
+    workspaceRoot,
   );
 
-  const traceResult = await nodeFileTrace([entryPoint], {
-    base,
-    processCwd,
-    log: options.verbose,
-    ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
-    // paths: [base],
-  });
+  const traceResult = await nodeFileTrace(
+    entryPoints.map((entry) => resolve(baseDir, entry)),
+    {
+      base: workspaceRoot,
+      processCwd: baseDir,
+      log: options.verbose,
+      ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
+      // paths: [base],
+    },
+  );
 
   const { fileList /* esmFileList */, reasons } = traceResult;
 
@@ -264,15 +258,17 @@ export async function traceFiles(
     });
   }
 
-  // find and exclude the initial entry point
-  const [resolvedEntryPoint] = Object.entries(reasons)
+  // find and exclude the initial entry points
+  const resolvedEntryPoints = Object.entries(reasons)
     .filter(([, reason]) => reason.type === 'initial')
-    .map(([file, reason]) => ({ file, ...reason }));
+    .map(([file]) => file);
 
   return {
-    base,
+    base: workspaceRoot,
     reasons,
-    files: new Set(fileList.filter((file) => file !== resolvedEntryPoint.file)),
+    files: new Set(
+      fileList.filter((file) => !resolvedEntryPoints.includes(file)),
+    ),
   };
 }
 

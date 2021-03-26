@@ -1,25 +1,36 @@
 import type { PackageJson, TsConfigJson } from 'type-fest';
 import * as esbuild from 'esbuild';
-import { lstatSync, statSync, writeFileSync } from 'fs';
+import { statSync, writeFileSync } from 'fs';
 import { dir } from 'tmp-promise';
 import pkgUp from 'pkg-up';
-import { dirname, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { logger } from '../logger';
 import { BirudaBuildOptions } from '../types';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard';
 
 export async function build(
   options: BirudaBuildOptions,
-): Promise<{ tmpFile: string; tmpDir: string; cleanup: () => Promise<void> }> {
-  const { entryPoint } = options;
+): Promise<{
+  outputFiles: Record<string, string>;
+  outputDir: string;
+  tsConfigJson: TsConfigJson;
+  packageJson: PackageJson;
+  cleanup: () => Promise<void>;
+}> {
+  const { entryPoints } = options;
 
-  const entryPointStat = statSync(entryPoint);
-  if (!entryPointStat.isFile()) {
-    throw new Error(`Invalid entrypoint ${entryPoint}`);
+  const entryPointPaths = Object.values(entryPoints);
+  const entryPointNames = Object.keys(entryPoints);
+
+  const [firstEntryPoint] = entryPointPaths;
+
+  const firstEntryPointStat = statSync(firstEntryPoint);
+  if (!firstEntryPointStat.isFile()) {
+    throw new Error(`Invalid entrypoint ${entryPointPaths}`);
   }
 
   const packageJsonPath = await pkgUp({
-    cwd: dirname(entryPoint),
+    cwd: dirname(firstEntryPoint),
   });
 
   if (!packageJsonPath) {
@@ -38,13 +49,15 @@ export async function build(
   // we need to perform the process inside this directory
   // so we create a tmp file before we move the resulting bundle
   // back out to where the user wanted
-  const { path: tmpDir, cleanup } = await dir({
-    tmpdir: dirname(entryPoint),
+  const { path: outputDir, cleanup } = await dir({
+    tmpdir: dirname(packageJsonPath),
     template: '.tmp-biruda-XXXXXX',
     unsafeCleanup: true,
   });
 
-  process.on('beforeExit', cleanup);
+  process.on('beforeExit', () =>
+    cleanup().catch((err) => console.warn(err.message)),
+  );
 
   const externals: (string | RegExp)[] = [
     ...(options.ignorePackages || []),
@@ -55,22 +68,25 @@ export async function build(
 
   logger.trace({ externals }, 'Resolved externals');
 
-  const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
+  // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
   const finalEsBuildOptions: esbuild.BuildOptions = {
     platform: options.platform === 'browser' ? 'browser' : 'node',
     logLevel: options.verbose ? 'info' : 'error',
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
-    entryPoints: [entryPoint], // [maybeMakeAbsolute(entryPoint, baseDir)],
-    outfile: esBuildOutputFilePath,
+    entryPoints: entryPointPaths, // [maybeMakeAbsolute(entryPoint, baseDir)],
+    // outfile: esBuildOutputFilePath,
+    outdir: outputDir,
+    // write: false,
     // metafile: '/tmp/meta.json',
-    absWorkingDir: dirname(entryPoint),
+    // absWorkingDir: dirname(entryPoint),
     bundle: true,
     minify: false,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: true, // 'external',
     // errorLimit: 1,
+    write: false,
     define: {
       NODE_ENV: 'production',
     },
@@ -83,66 +99,63 @@ export async function build(
     ],
   };
 
-  logger.info('Building entryPoints %s ...', entryPoint);
+  logger.info('Building entryPoints %s ...', entryPointPaths);
 
-  return esbuild.build(finalEsBuildOptions).then(async (buildResult) => {
-    if (buildResult.warnings.length > 0) {
-      logger.warn('Build warnings: %d', buildResult.warnings.length);
+  const buildResult = await esbuild.build(finalEsBuildOptions);
 
-      buildResult.warnings.forEach((warn) => {
-        logger.trace(warn, `Warning: ${warn.text}`);
+  if (buildResult.warnings.length > 0) {
+    logger.warn('Build warnings: %d', buildResult.warnings.length);
+
+    buildResult.warnings.forEach((warn) => {
+      logger.trace(warn, `Warning: ${warn.text}`);
+    });
+  }
+
+  if (!buildResult.outputFiles) {
+    throw new Error('Missing outputFiles from build result');
+  }
+
+  const outputFiles = Object.fromEntries(
+    buildResult.outputFiles.map((outputFile) => {
+      const [outputFilePathBasename, ...exts] = basename(outputFile.path).split(
+        /\./,
+      );
+
+      // find the entrypoint that matches this output file
+      const [entryPointName, entryPointFileForOutput] =
+        Object.entries(entryPoints).find(([, entryPointFile]) => {
+          return basename(entryPointFile, '.js') === outputFilePathBasename;
+        }) || [];
+
+      if (!entryPointName) {
+        throw new Error('Cant find matching entry point for build output');
+      }
+
+      const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
+
+      writeFileSync(fileName, outputFile.contents, {
+        encoding: 'utf8',
       });
-    }
 
-    const newPackageJson: PackageJson.PackageJsonStandard = {
-      name: packageJson.name,
-      version: packageJson.version,
-      license: packageJson.license,
-      private: packageJson.private,
-      // main: path.basename(entryPoint),
-      // scripts: Object.fromEntries(
-      //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
-      //     return !scriptName.match(/^(dev|build|test)(\W|$)/);
-      //   }),
-      // ),
-      // scripts: {
-      //   start: 'node index.js',
-      // },
-      // dependencies: Object.fromEntries(
-      //   Array.from(dependencies.entries()).map(([id, { version }]) => [
-      //     id,
-      //     version,
-      //   ]),
-      // ),
-    };
+      return [entryPointName, fileName];
+    }),
+  );
 
-    const stat = lstatSync(esBuildOutputFilePath);
+  // const outputFiles = Object.fromEntries(
+  //   Object.entries(options.entryPoints).map(([name, file]) => {
+  //     return [name, basename(file)];
+  //   }),
+  // );
 
-    if (stat.size === 0) {
-      logger.warn(`Empty output file`);
-      logger.trace({ stat }, `Stat file %s`, esBuildOutputFilePath);
-      throw new Error('Empty output file');
-    }
+  logger.info(`Build completed. Output is in ${outputDir}`);
 
-    // const absoluteOutputFile = maybeMakeAbsolute('index.js', tmpDir);
-    // copyFileSync(esBuildOutputFilePath, absoluteOutputFile);
-    // logger.warn(
-    //   {
-    //     stat: lstatSync(esBuildOutputFilePath),
-    //     esBuildOutputFilePath,
-    //     absoluteOutputFile,
-    //   },
-    //   `Stat file %s after:copyFileSync0`,
-    // );
-    // copyFileSync(`${esBuildOutputFilePath}.map`, `${absoluteOutputFile}.map`);
+  return {
+    outputFiles,
+    outputDir,
+    cleanup,
+    packageJson,
+    tsConfigJson,
+  };
 
-    writeFileSync(
-      resolve(tmpDir, 'package.json'),
-      JSON.stringify(newPackageJson, null, 2),
-    );
-    logger.info(`Build completed. Output is in ${tmpDir}`);
-
-    return { tmpFile: esBuildOutputFilePath, tmpDir, cleanup };
-  });
   // .catch((err) => logger.error(err));
 }

@@ -31,7 +31,11 @@ export async function archiveFiles({
   extras: Set<string>;
   format?: 'zip' | 'tar';
 }) {
-  logger.info(`Archiving %d files and %d extras...`, files.size, extras.size);
+  logger.info(
+    `Archiving approx %d files and %d extras...`,
+    files.size,
+    extras.size,
+  );
 
   const isTar = format === 'tar';
   const archive = archiver(

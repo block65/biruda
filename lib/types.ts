@@ -1,6 +1,6 @@
 // all optional because they might be on command like
 export interface BirudaConfigFileProperties {
-  entryPoints?: string[];
+  entryPoints?: Record<string, string>;
   verbose?: boolean;
   outDir?: string;
   platform?: string;
@@ -25,7 +25,7 @@ export interface BirudaCliArguments {
 export interface BirudaBuildOptions {
   verbose?: boolean;
   outDir: string;
-  entryPoint: string;
+  entryPoints: Record<string, string>;
   // baseDir: string;
   platform: string;
   externals?: (string | RegExp)[];

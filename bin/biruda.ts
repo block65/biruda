@@ -46,13 +46,13 @@ yargs(hideBin(process.argv))
     //     default: 5000,
     //   });
     // },
-    async ({ argv }) => {
+    ({ argv }) => {
       if (argv.verbose) {
         logger.info(`bundle starting`, argv);
       }
 
-      return cliBundle(argv).catch((err) => {
-        logger.error(err.stack);
+      cliBundle(argv).catch((err) => {
+        logger.error(err);
         process.exitCode = 1;
       });
     },
