@@ -1,6 +1,7 @@
 import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
+import * as fs from 'fs';
 import { existsSync, readFileSync } from 'fs';
-import { readFile, stat } from 'fs/promises';
+import { access, readFile, stat } from 'fs/promises';
 import mem from 'mem';
 import micromatch from 'micromatch';
 import pMemoize from 'p-memoize';
@@ -30,32 +31,6 @@ interface Warning extends Error {
   column?: number;
 }
 
-function readManifestSyncInner(
-  dirOrFile: string,
-  throwOnMissing?: false,
-): PackageJson | null;
-function readManifestSyncInner(
-  dirOrFile: string,
-  throwOnMissing: true,
-): PackageJson;
-function readManifestSyncInner(
-  dirOrFile: string,
-  throwOnMissing = false,
-): PackageJson | null {
-  const file = dirOrFile.endsWith('package.json')
-    ? dirOrFile
-    : join(dirOrFile, 'package.json');
-
-  if (throwOnMissing || existsSync(file)) {
-    return JSON.parse(readFileSync(file).toString());
-  }
-  return null;
-}
-
-export const readManifestSync = mem(readManifestSyncInner, {
-  cacheKey: ([fdirOrFile]) => fdirOrFile,
-});
-
 async function readManifestInner(
   dirOrFile: string | URL,
   throwOnMissing?: false,
@@ -70,11 +45,13 @@ async function readManifestInner(
 ): Promise<PackageJson | null> {
   const file = dirOrFile.toString().endsWith('package.json')
     ? dirOrFile
-    : new URL('package.json', dirOrFile);
+    : new URL('package.json', pathToFileURL(`${dirOrFile.toString()}/`));
 
-  const stats = await stat(file);
+  const exists = await access(file, fs.constants.F_OK)
+    .then(() => true)
+    .catch(() => false);
 
-  if (throwOnMissing || stats.isFile()) {
+  if (throwOnMissing || exists) {
     return JSON.parse(await readFile(file, 'utf-8'));
   }
   return null;
@@ -82,7 +59,7 @@ async function readManifestInner(
 
 export const readManifest = pMemoize(readManifestInner, {
   cacheKey: ([fdirOrFile]) => fdirOrFile,
-});
+}) as typeof readManifestInner;
 
 export async function findWorkspaceRoot(initial = process.cwd()) {
   logger.trace('Finding workspace root from %s', initial);
@@ -94,7 +71,7 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
     // suppress eslint here because this needs to be sequential/ serial
     // and cannot be parallelised
     // eslint-disable-next-line no-await-in-loop
-    const manifest = await readManifest(currentDirectory, true);
+    const manifest = await readManifest(currentDirectory);
 
     if (manifest) {
       const workspaces = Array.isArray(manifest.workspaces)

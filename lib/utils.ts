@@ -74,7 +74,7 @@ export async function getDependencyPathsFromModule(
     return;
   }
 
-  const pkgJson = await readManifest(modulePath, true);
+  const pkgJson = await readManifest(modulePath);
 
   if (!pkgJson) {
     throw new Error(`Unable to locate manifest for ${name}`);
