@@ -58,6 +58,22 @@ export async function resolvePackageJson(
   }
 }
 
+export function serialPromiseMapAccum<
+  T,
+  F extends (arg: T, idx: number, arr: T[]) => Promise<any> = (
+    arg: T,
+    idx: number,
+    arr: T[],
+  ) => Promise<any>,
+  R = AsyncReturnType<F>
+>(arr: T[], fn: F): Promise<R[]> {
+  return arr.reduce(async (promise, ...args): Promise<R[]> => {
+    const accum = await promise;
+    const result = await fn(...args);
+    return accum.concat(result);
+  }, Promise.resolve([] as R[]));
+}
+
 export async function getDependencyPathsFromModule(
   name: string,
   base: URL,
@@ -114,9 +130,9 @@ export async function getDependencyPathsFromModule(
     return; // [modulePath];
   }
 
-  dependencies.forEach((pkgDep) => {
+  await serialPromiseMapAccum(dependencies, async (pkgDep) => {
     // logger.trace('[%s] Found dep %s', pkgDep, name);
-    getDependencyPathsFromModule(
+    return getDependencyPathsFromModule(
       pkgDep,
       modulePath,
       descendCallback,
@@ -124,22 +140,6 @@ export async function getDependencyPathsFromModule(
       [...parents, name],
     );
   });
-}
-
-export function serialPromiseMapAccum<
-  T,
-  F extends (arg: T, idx: number, arr: T[]) => Promise<any> = (
-    arg: T,
-    idx: number,
-    arr: T[],
-  ) => Promise<any>,
-  R = AsyncReturnType<F>
->(arr: T[], fn: F): Promise<R[]> {
-  return arr.reduce(async (promise, ...args): Promise<R[]> => {
-    const accum = await promise;
-    const result = await fn(...args);
-    return accum.concat(result);
-  }, Promise.resolve([] as R[]));
 }
 
 // create a function that will definitely run at least once, every `delay` seconds

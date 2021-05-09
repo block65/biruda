@@ -1,4 +1,4 @@
-import { promises as fsPromises, writeFileSync } from 'fs';
+import { writeFile, mkdir } from 'fs/promises';
 import { basename, dirname, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -15,6 +15,7 @@ import {
   dedupeArray,
   getDependencyPathsFromModule,
   relativeUrl,
+  serialPromiseMapAccum,
 } from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
@@ -68,7 +69,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   }
 
   // archiver finalize() exits without error if the outDir doesnt exist
-  await fsPromises.mkdir(outDir, {
+  await mkdir(outDir, {
     recursive: true,
   });
 
@@ -144,7 +145,9 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const extras = new Set<string>();
   const modulePaths = new Set<string>(options.forceInclude);
-  options.forceInclude?.forEach((name) => {
+
+  // should run serially due to path descending and caching
+  await serialPromiseMapAccum(options.forceInclude || [], async (name) => {
     // local path
     if (name.startsWith('.') || name.startsWith('/')) {
       // const rel = relative(base, name);
@@ -154,7 +157,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     }
 
     // default, assume module
-    getDependencyPathsFromModule(
+    await getDependencyPathsFromModule(
       name,
       base,
       function shouldDescend(modulePath, moduleName) {
@@ -219,7 +222,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     // ),
   };
 
-  writeFileSync(
+  await writeFile(
     resolve(outputDir, 'package.json'),
     JSON.stringify(newPackageJson, null, 2),
   );
@@ -234,6 +237,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     compressionLevel: resolvedConfig.compressionLevel,
   });
 
-  logger.info(`Done. Files are at %s`, outDir);
+  logger.info(`Done. Files are at %s`, pathToFileURL(outDir));
   await cleanup().catch((err) => logger.warn(err.message));
 }
