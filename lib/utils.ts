@@ -113,7 +113,7 @@ export async function getDependencyPathsFromModule(
 
   if (!pkgJson.files) {
     logger.trace('[%s] No files[] in  manifest, adding all', logPrefixString);
-    includeCallback(modulePath, name);
+    includeCallback(new URL('.', modulePath), name);
   }
 
   const dependencies = Object.keys(pkgJson.dependencies || {});
