@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import 'source-map-support/register';
+// eslint-disable-next-line import/extensions
+import 'source-map-support/register.js';
 import yargs from 'yargs';
-// @ts-ignore
 import { hideBin } from 'yargs/helpers';
-import { logger } from '../lib/logger';
-import { cliBundle } from '../lib/bundle';
-import { BirudaCliArguments } from '../lib/types.js';
+import type { BirudaCliArguments } from '../lib/types.js';
+import { logger } from '../lib/logger.js';
+import { cliBundle } from '../lib/bundle.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions
 yargs(hideBin(process.argv))
@@ -61,8 +61,6 @@ yargs(hideBin(process.argv))
     //   });
     // },
     ({ argv }) => {
-      console.log({ argv });
-
       if (argv.verbose) {
         logger.info(`bundle starting`, argv);
       }

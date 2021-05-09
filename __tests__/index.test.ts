@@ -1,29 +1,33 @@
-import { dirname } from 'path';
-import { traceDependencies, traceFileDependencies } from '../lib/deps';
+import { PackageJson } from 'type-fest';
+import { URL } from 'url';
+import { traceDependencies } from '../lib/deps';
+import { loadJson } from '../lib/utils.js';
+
+function logNThrow(err: any) {
+  console.error(err);
+  throw err;
+}
 
 describe('Deps Fixtures', () => {
   // test('collect', async () => {});
   // test('flatten', async () => {});
 
-  test('traceFileDependencies', async () => {
-    const entryPoint = require.resolve('./fixtures');
-    // const packageJsonPath = require.resolve('./fixtures/package.json');
-
-    await expect(
-      traceFileDependencies(entryPoint, { workingDirectory: __dirname }),
-    ).resolves.toMatchSnapshot();
-  });
+  // test('traceFileDependencies', async () => {
+  //   const entryPoint = require.resolve('./fixtures');
+  //   // const packageJsonPath = require.resolve('./fixtures/package.json');
+  //
+  //   await expect(
+  //     traceFileDependencies(entryPoint, { workingDirectory: __dirname }),
+  //   ).resolves.toMatchSnapshot();
+  // });
 
   test('traceDependencies', async () => {
-    const base = require.resolve('./fixtures');
-    // eslint-disable-next-line global-require
-    const manifest = require(`./fixtures/package.json`);
+    const base = new URL('./fixtures/fixture1/', import.meta.url);
+
+    const manifest = await loadJson<PackageJson>(new URL('package.json', base));
 
     await expect(
-      traceDependencies(manifest.dependencies, dirname(base)).catch((err) => {
-        console.error(err);
-        throw err;
-      }),
+      traceDependencies(manifest.dependencies || {}, base).catch(logNThrow),
     ).resolves.toMatchSnapshot();
   });
 });

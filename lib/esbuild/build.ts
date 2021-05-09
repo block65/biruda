@@ -1,13 +1,14 @@
-import type { PackageJson, TsConfigJson } from 'type-fest';
 import * as esbuild from 'esbuild';
 import { statSync, writeFileSync } from 'fs';
-import { dir } from 'tmp-promise';
+import { basename, dirname, join } from 'path';
 import pkgUp from 'pkg-up';
-import { basename, dirname, join, resolve } from 'path';
-import { OutputFile } from 'esbuild';
-import { logger } from '../logger';
-import { BirudaBuildOptions } from '../types';
-import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard';
+import { dir } from 'tmp-promise';
+import type { PackageJson, TsConfigJson } from 'type-fest';
+import { pathToFileURL, URL } from 'url';
+import type { BirudaBuildOptions } from '../types.js';
+import { logger } from '../logger.js';
+import { loadJson } from '../utils.js';
+import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
 export async function build(
   options: BirudaBuildOptions,
@@ -37,14 +38,13 @@ export async function build(
     throw new Error('Cant find a package.json');
   }
 
-  // eslint-disable-next-line global-require,import/no-dynamic-require
-  const packageJson: PackageJson = require(packageJsonPath);
+  const packageJsonUrl = pathToFileURL(packageJsonPath);
 
-  // eslint-disable-next-line global-require,import/no-dynamic-require
-  const tsConfigJson: TsConfigJson = require(resolve(
-    dirname(packageJsonPath),
-    'tsconfig.json',
-  ));
+  const packageJson = await loadJson<PackageJson>(packageJsonUrl);
+
+  const tsConfigJson = await loadJson<TsConfigJson>(
+    new URL('tsconfig.json', packageJsonUrl),
+  );
 
   // we need to perform the process inside this directory
   // so we create a tmp file before we move the resulting bundle
@@ -124,7 +124,7 @@ export async function build(
     );
 
     // find the entrypoint that matches this output file
-    const [entryPointName, entryPointFileForOutput] =
+    const [entryPointName /* , entryPointFileForOutput */] =
       Object.entries(entryPoints).find(([, entryPointFile]) => {
         return (
           basename(entryPointFile).replace(/\.[t|j]s$/, '') ===

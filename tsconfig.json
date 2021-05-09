@@ -7,10 +7,10 @@
     "lib": ["es2020"],
     "sourceMap": true,
     "outDir": "./dist",
-    "module": "commonjs",
+    "module": "es2020",
     "removeComments": true,
     "esModuleInterop": true
   },
-  "exclude": ["dist", "node_modules"],
-  "include": ["./lib", "./bin"]
+  "include": ["./lib", "./bin", "./lib/esm.d.ts"],
+  "exclude": ["dist", "node_modules"]
 }

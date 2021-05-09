@@ -1,9 +1,10 @@
 import archiver from 'archiver';
 import { createWriteStream, existsSync, lstatSync, realpathSync } from 'fs';
 import { dirname, join, relative } from 'path';
+import { URL } from 'url';
 import { constants } from 'zlib';
-import { basicThrottle, maybeMakeAbsolute } from './utils';
-import { logger as parentLogger } from './logger';
+import { basicThrottle, maybeMakeAbsolute } from './utils.js';
+import { logger as parentLogger } from './logger.js';
 
 const logger = parentLogger.child({ name: 'archive' });
 

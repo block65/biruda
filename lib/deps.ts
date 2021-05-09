@@ -1,12 +1,14 @@
-/* eslint-disable global-require,import/no-dynamic-require */
-import { dirname, join, normalize, relative, resolve } from 'path';
 import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
-import pkgUp from 'pkg-up';
 import { existsSync, readFileSync } from 'fs';
-import type { PackageJson } from 'type-fest';
-import micromatch from 'micromatch';
+import { readFile, stat } from 'fs/promises';
 import mem from 'mem';
-import { logger as parentLogger } from './logger';
+import micromatch from 'micromatch';
+import pMemoize from 'p-memoize';
+import { dirname, join, normalize, relative } from 'path';
+import type { PackageJson } from 'type-fest';
+import { fileURLToPath, pathToFileURL, URL } from 'url';
+import { logger as parentLogger } from './logger.js';
+import { loadJson, relativeUrl, resolvePackageJson } from './utils.js';
 
 const logger = parentLogger.child({ name: 'deps' });
 
@@ -18,10 +20,8 @@ export interface Dependency {
   name: string;
   version: string;
   files?: string[];
-  path: string;
+  path: URL;
 }
-
-export type DependencyMap = Map<string, Dependency>;
 
 interface Warning extends Error {
   lineText?: string;
@@ -56,14 +56,45 @@ export const readManifestSync = mem(readManifestSyncInner, {
   cacheKey: ([fdirOrFile]) => fdirOrFile,
 });
 
-export function findWorkspaceRoot(initial = process.cwd()) {
+async function readManifestInner(
+  dirOrFile: string | URL,
+  throwOnMissing?: false,
+): Promise<PackageJson | null>;
+async function readManifestInner(
+  dirOrFile: string | URL,
+  throwOnMissing: true,
+): Promise<PackageJson>;
+async function readManifestInner(
+  dirOrFile: string | URL,
+  throwOnMissing = false,
+): Promise<PackageJson | null> {
+  const file = dirOrFile.toString().endsWith('package.json')
+    ? dirOrFile
+    : new URL('package.json', dirOrFile);
+
+  const stats = await stat(file);
+
+  if (throwOnMissing || stats.isFile()) {
+    return JSON.parse(await readFile(file, 'utf-8'));
+  }
+  return null;
+}
+
+export const readManifest = pMemoize(readManifestInner, {
+  cacheKey: ([fdirOrFile]) => fdirOrFile,
+});
+
+export async function findWorkspaceRoot(initial = process.cwd()) {
   logger.trace('Finding workspace root from %s', initial);
 
   let previousDirectory = null;
   let currentDirectory = normalize(initial);
 
   do {
-    const manifest = readManifestSync(currentDirectory);
+    // suppress eslint here because this needs to be sequential/ serial
+    // and cannot be parallelised
+    // eslint-disable-next-line no-await-in-loop
+    const manifest = await readManifest(currentDirectory, true);
 
     if (manifest) {
       const workspaces = Array.isArray(manifest.workspaces)
@@ -122,118 +153,94 @@ function flattenDeps(initialChildren: RecursiveDependency[]): Dependency[] {
   });
 }
 
-function resolvePackageJson(name: string, base: string) {
-  try {
-    return require.resolve(`${name}/package.json`, {
-      paths: [base],
-    });
-  } catch (err) {
-    if (err.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
-      if (logger.isLevelEnabled('debug')) {
-        logger.warn({ base, name }, 'WARN: %s', err.message);
-      }
-
-      return pkgUp.sync({
-        cwd: dirname(
-          require.resolve(name, {
-            paths: [base],
-          }),
-        ),
-      });
-    }
-    throw err;
-  }
-}
-
 export async function traceDependencies(
   initialDeps: Record<string, string>,
-  startPath: string,
+  startPath: URL,
   // mode = 'production',
 ): Promise<Dependency[]> {
   const circuitBreaker = new Set<string>();
 
   function recursiveResolveDependencies(
     deps: Record<string, string>,
-    basePath: string,
-  ): RecursiveDependency[] {
-    return Object.entries(deps).map(
-      ([name, version]): RecursiveDependency => {
-        const modulePackageJsonPath = resolvePackageJson(name, basePath);
+    base: URL,
+  ): Promise<RecursiveDependency[]> {
+    return Promise.all(
+      Object.entries(deps).map(
+        async ([name, version]): Promise<RecursiveDependency> => {
+          const modulePackageJsonUrl = await resolvePackageJson(name, base);
+          const packageJson = await loadJson<PackageJson>(modulePackageJsonUrl);
 
-        if (!modulePackageJsonPath) {
-          throw Object.assign(
-            new Error(`Unable to resolve package.json for module ${name}`),
-            { modulePackageJsonPath },
+          const nextPath = new URL('.', modulePackageJsonUrl);
+          const beenHere = circuitBreaker.has(nextPath.toString());
+
+          // if we've already been here, we just return empty children as
+          // a previous iteration has already returned the children
+          if (beenHere) {
+            return {
+              name,
+              version,
+              path: nextPath,
+              files: packageJson.files,
+              deps: [],
+            };
+          }
+
+          circuitBreaker.add(nextPath.toString());
+
+          const children = await recursiveResolveDependencies(
+            packageJson.dependencies || {},
+            nextPath,
           );
-        }
 
-        const packageJson = require(modulePackageJsonPath);
-
-        const nextPath = dirname(modulePackageJsonPath);
-        const beenHere = circuitBreaker.has(nextPath);
-
-        // if we've already been here, we just return empty children as
-        // a previous iteration has already returned the children
-        if (beenHere) {
           return {
             name,
             version,
             path: nextPath,
             files: packageJson.files,
-            deps: [],
+            deps: children,
           };
-        }
-
-        circuitBreaker.add(nextPath);
-
-        const children = recursiveResolveDependencies(
-          packageJson.dependencies || {},
-          nextPath,
-        );
-
-        return {
-          name,
-          version,
-          path: nextPath,
-          files: packageJson.files,
-          deps: children,
-        };
-      },
+        },
+      ),
     );
   }
 
-  return flattenDeps(recursiveResolveDependencies(initialDeps, startPath));
+  return flattenDeps(
+    await recursiveResolveDependencies(initialDeps, startPath),
+  );
 }
 
 export async function traceFiles(
   entryPoints: string[],
   options: {
-    baseDir: string;
+    baseDir: URL;
     verbose?: boolean;
     ignorePackages?: string[];
   },
 ): Promise<{
   files: Set<string>;
-  base: string;
+  base: URL;
   reasons: NodeFileTraceReasons;
 }> {
   const { baseDir } = options;
 
-  const workspaceRoot = findWorkspaceRoot(baseDir) || baseDir;
+  const maybeWorkspaceRoot = await findWorkspaceRoot(fileURLToPath(baseDir));
+  const workspaceRoot = maybeWorkspaceRoot
+    ? pathToFileURL(maybeWorkspaceRoot)
+    : baseDir;
   // const processCwd = dirname(manifestFilename);
 
   logger.info(
     entryPoints,
     'Tracing dependencies using base: %s, workspace: %s',
-    relative(workspaceRoot, baseDir),
+    relativeUrl(workspaceRoot, baseDir),
     workspaceRoot,
   );
 
   const traceResult = await nodeFileTrace(
-    entryPoints.map((entry) => resolve(baseDir, entry)),
+    entryPoints.map((entry) => fileURLToPath(new URL(entry, baseDir))),
     {
-      base: workspaceRoot,
-      processCwd: baseDir,
+      base: fileURLToPath(workspaceRoot),
+      processCwd: fileURLToPath(baseDir),
       log: options.verbose,
       ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
       // paths: [base],

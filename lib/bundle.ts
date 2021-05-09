@@ -1,16 +1,21 @@
-import type { PackageJson } from 'type-fest';
-import { basename, dirname, relative, resolve } from 'path';
 import { promises as fsPromises, writeFileSync } from 'fs';
-import { logger as parentLogger } from './logger';
-import { traceFiles } from './deps';
-import { archiveFiles } from './archive';
-import {
+import { basename, dirname, resolve } from 'path';
+import type { PackageJson } from 'type-fest';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { archiveFiles } from './archive.js';
+import { traceFiles } from './deps.js';
+import { build } from './esbuild/build.js';
+import { logger as parentLogger } from './logger.js';
+import type {
   BirudaBuildOptions,
   BirudaCliArguments,
   BirudaConfigFileProperties,
-} from './types';
-import { dedupeArray, getDependencyPathsFromModule } from './utils';
-import { build } from './esbuild/build';
+} from './types.js';
+import {
+  dedupeArray,
+  getDependencyPathsFromModule,
+  relativeUrl,
+} from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
 
@@ -45,13 +50,16 @@ function parseEntryPoints(
 }
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const configFileProps: BirudaConfigFileProperties = cliArguments.config
-    ? // eslint-disable-next-line global-require,import/no-dynamic-require
-      require(resolve(
-        cliArguments.config ? dirname(cliArguments.config) : process.cwd(),
-        cliArguments.config,
-      ))
-    : {};
+  const configFileProps = cliArguments.config
+    ? (
+        await import(
+          resolve(
+            cliArguments.config ? dirname(cliArguments.config) : process.cwd(),
+            cliArguments.config,
+          )
+        )
+      ).default
+    : ({} as BirudaConfigFileProperties);
 
   const outDir = cliArguments.output || configFileProps.outDir;
 
@@ -115,7 +123,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   const { files, base } = await traceFiles(
     outputFiles.map(([, fileName]) => fileName),
     {
-      baseDir: outputDir,
+      baseDir: pathToFileURL(outputDir),
       ignorePackages: [
         ...(resolvedConfig.forceInclude || []),
         ...(resolvedConfig.ignorePackages || []),
@@ -150,17 +158,17 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       name,
       base,
       function shouldDescend(modulePath, moduleName) {
-        const include = !modulePaths.has(modulePath);
+        const include = !modulePaths.has(modulePath.toString());
         if (include) {
           logger.trace('[%s] processing %s', moduleName, modulePath);
-          modulePaths.add(modulePath);
+          modulePaths.add(modulePath.toString());
         } else {
           logger.trace('[%s] ignoring %s', moduleName, modulePath);
         }
         return include;
       },
       function includeCallback(absPath) {
-        const relPath = relative(base, absPath);
+        const relPath = relativeUrl(base, absPath);
         if (!files.has(relPath)) {
           logger.trace('[%s] including path %s', name, relPath);
           extras.add(relPath);
@@ -221,7 +229,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     files,
     extras,
     outDir,
-    base,
+    base: fileURLToPath(base),
     format: resolvedConfig.archiveFormat,
     compressionLevel: resolvedConfig.compressionLevel,
   });
