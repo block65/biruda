@@ -14,6 +14,36 @@ import { build } from './esbuild/build';
 
 const logger = parentLogger.child({ name: 'bundle' });
 
+function parseEntryPoints(
+  entrypoint?: string[] | Record<string, string> | string,
+): Record<string, string> {
+  if (typeof entrypoint === 'string') {
+    const name = basename(entrypoint).split('.').shift();
+
+    if (!name) {
+      throw new TypeError(`Bad entrypoint name: ${entrypoint}`);
+    }
+
+    return {
+      [name]: entrypoint,
+    };
+  }
+  if (Array.isArray(entrypoint)) {
+    if (entrypoint.length === 1) {
+      return {
+        index: entrypoint[0],
+      };
+    }
+
+    return Object.fromEntries(
+      entrypoint.map((entryPoint) => {
+        return [basename(entryPoint).split('.').shift(), entryPoint];
+      }),
+    );
+  }
+  return entrypoint || {};
+}
+
 export async function cliBundle(cliArguments: BirudaCliArguments) {
   const configFileProps: BirudaConfigFileProperties = cliArguments.config
     ? // eslint-disable-next-line global-require,import/no-dynamic-require
@@ -34,20 +64,26 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     recursive: true,
   });
 
-  const cliEntrypoints =
-    cliArguments.entrypoint?.length === 1
-      ? { index: cliArguments.entrypoint[0] }
-      : Object.fromEntries(
-          (cliArguments.entrypoint || []).map((entryPoint) => {
-            return [basename(entryPoint).split('.').shift(), entryPoint];
-          }),
-        );
+  const mergedEntryPoints = {
+    ...parseEntryPoints(cliArguments.entrypoint),
+    ...parseEntryPoints(configFileProps.entryPoints),
+  };
 
   const resolvedConfig = {
-    entryPoints: { ...cliEntrypoints, ...configFileProps.entryPoints },
+    // default until we can reliably move to nodejs enable-source-maps
+    // which doesnt seem to work reliably right now (april 2021)
+    sourceMapSupport: true,
     verbose: cliArguments.verbose || configFileProps.verbose,
-    sourceMapSupport: false,
     ...configFileProps,
+    forceInclude: [
+      ...(cliArguments.forceInclude || []),
+      ...(configFileProps.forceInclude || []),
+    ],
+    entryPoints: mergedEntryPoints,
+    archiveFormat:
+      cliArguments.archiveFormat || configFileProps.archiveFormat || 'tar',
+    compressionLevel:
+      cliArguments.compressionLevel ?? configFileProps.compressionLevel,
   };
 
   const { entryPoints } = resolvedConfig;
@@ -69,25 +105,47 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ...(resolvedConfig.sourceMapSupport ? ['source-map-support'] : []),
       ...(resolvedConfig.forceInclude || []),
     ]),
+    // forceBuild: resolvedConfig.forceBuild,
   };
 
   const { outputFiles, outputDir, packageJson, cleanup } = await build(options);
 
-  const { files, base } = await traceFiles(Object.values(outputFiles), {
-    baseDir: outputDir,
-    ignorePackages: [
-      ...(resolvedConfig.forceInclude || []),
-      ...(resolvedConfig.ignorePackages || []).filter(
-        (pkg): pkg is string => typeof pkg === 'string',
-      ),
-    ],
-  });
+  logger.info({ outputFiles, resolvedConfig });
 
-  logger.info('Force including %d modules', options.forceInclude?.length || 0);
+  const { files, base } = await traceFiles(
+    outputFiles.map(([, fileName]) => fileName),
+    {
+      baseDir: outputDir,
+      ignorePackages: [
+        ...(resolvedConfig.forceInclude || []),
+        ...(resolvedConfig.ignorePackages || []),
+        // .filter(
+        //   (pkg): pkg is string => typeof pkg === 'string',
+        // ),
+      ],
+    },
+  );
+
+  if (resolvedConfig.forceInclude) {
+    logger.info(
+      resolvedConfig.forceInclude,
+      'Force including %d paths/modules',
+      resolvedConfig.forceInclude.length,
+    );
+  }
 
   const extras = new Set<string>();
   const modulePaths = new Set<string>(options.forceInclude);
   options.forceInclude?.forEach((name) => {
+    // local path
+    if (name.startsWith('.') || name.startsWith('/')) {
+      // const rel = relative(base, name);
+      logger.trace('force including file path %s', name);
+      extras.add(name);
+      return;
+    }
+
+    // default, assume module
     getDependencyPathsFromModule(
       name,
       base,
@@ -116,7 +174,11 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   // try and find anything that turned out to be behind a symlink, and then
   // add what we think might be the symlink
   options.forceInclude?.forEach((name) => {
-    if (![...extras].find((file) => file.startsWith(`node_modules/${name}`))) {
+    if (
+      !name.startsWith('.') &&
+      !name.startsWith('/') &&
+      ![...extras].find((file) => file.startsWith(`node_modules/${name}`))
+    ) {
       logger.trace(
         '%s did not have any files, assuming symlink and adding top level',
         name,
@@ -137,7 +199,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     //   }),
     // ),
     scripts: Object.fromEntries(
-      Object.entries(outputFiles).map(([name, file]) => {
+      outputFiles.map(([name, file]) => {
         return [name === 'index' ? 'start' : name, `node ${basename(file)}`];
       }),
     ),
@@ -161,6 +223,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     outDir,
     base,
     format: resolvedConfig.archiveFormat,
+    compressionLevel: resolvedConfig.compressionLevel,
   });
 
   logger.info(`Done. Files are at %s`, outDir);

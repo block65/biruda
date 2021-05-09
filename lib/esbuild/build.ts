@@ -4,6 +4,7 @@ import { statSync, writeFileSync } from 'fs';
 import { dir } from 'tmp-promise';
 import pkgUp from 'pkg-up';
 import { basename, dirname, join, resolve } from 'path';
+import { OutputFile } from 'esbuild';
 import { logger } from '../logger';
 import { BirudaBuildOptions } from '../types';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard';
@@ -11,7 +12,7 @@ import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard';
 export async function build(
   options: BirudaBuildOptions,
 ): Promise<{
-  outputFiles: Record<string, string>;
+  outputFiles: [entryPointName: string, fileName: string][];
   outputDir: string;
   tsConfigJson: TsConfigJson;
   packageJson: PackageJson;
@@ -20,7 +21,6 @@ export async function build(
   const { entryPoints } = options;
 
   const entryPointPaths = Object.values(entryPoints);
-  const entryPointNames = Object.keys(entryPoints);
 
   const [firstEntryPoint] = entryPointPaths;
 
@@ -99,7 +99,7 @@ export async function build(
     ],
   };
 
-  logger.info('Building entryPoints %s ...', entryPointPaths);
+  logger.info({ entryPointPaths }, 'Building entryPoints...');
 
   const buildResult = await esbuild.build(finalEsBuildOptions);
 
@@ -115,47 +115,46 @@ export async function build(
     throw new Error('Missing outputFiles from build result');
   }
 
-  const outputFiles = Object.fromEntries(
-    buildResult.outputFiles.map((outputFile) => {
-      const [outputFilePathBasename, ...exts] = basename(outputFile.path).split(
-        /\./,
-      );
+  const outputFiles = buildResult.outputFiles.map((outputFile): [
+    entryPointName: string,
+    fileName: string,
+  ] => {
+    const [outputFilePathBasename, ...exts] = basename(outputFile.path).split(
+      /\./,
+    );
 
-      // find the entrypoint that matches this output file
-      const [entryPointName, entryPointFileForOutput] =
-        Object.entries(entryPoints).find(([, entryPointFile]) => {
-          return basename(entryPointFile, '.js') === outputFilePathBasename;
-        }) || [];
+    // find the entrypoint that matches this output file
+    const [entryPointName, entryPointFileForOutput] =
+      Object.entries(entryPoints).find(([, entryPointFile]) => {
+        return (
+          basename(entryPointFile).replace(/\.[t|j]s$/, '') ===
+          outputFilePathBasename
+        );
+      }) || [];
 
-      if (!entryPointName) {
-        throw new Error('Cant find matching entry point for build output');
-      }
+    if (!entryPointName) {
+      logger.warn({ entryPoints, outputFilePathBasename, exts });
+      throw new Error('Cant find matching entry point for build output ');
+    }
 
-      const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
+    const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
 
-      writeFileSync(fileName, outputFile.contents, {
-        encoding: 'utf8',
-      });
+    writeFileSync(fileName, outputFile.contents, {
+      encoding: 'utf-8',
+    });
 
-      return [entryPointName, fileName];
-    }),
-  );
-
-  // const outputFiles = Object.fromEntries(
-  //   Object.entries(options.entryPoints).map(([name, file]) => {
-  //     return [name, basename(file)];
-  //   }),
-  // );
+    return [entryPointName, fileName];
+  });
 
   logger.info(`Build completed. Output is in ${outputDir}`);
 
   return {
-    outputFiles,
+    outputFiles: outputFiles.filter(
+      ([, fileName]) => !fileName.endsWith('.map'),
+    ), // : [...outputFiles, ...secondOutputFiles],
     outputDir,
     cleanup,
     packageJson,
     tsConfigJson,
   };
-
-  // .catch((err) => logger.error(err));
 }

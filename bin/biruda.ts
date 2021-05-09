@@ -5,6 +5,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { logger } from '../lib/logger';
 import { cliBundle } from '../lib/bundle';
+import { BirudaCliArguments } from '../lib/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions
 yargs(hideBin(process.argv))
@@ -33,9 +34,22 @@ yargs(hideBin(process.argv))
   })
   .option('archiveFormat', {
     alias: ['a'],
-    type: 'string',
-    string: true,
+    choices: ['tar', 'zip'],
+    default: 'tar',
     description: 'Archive format - tar or zip',
+  })
+  .option('compressionLevel', {
+    alias: ['z'],
+    type: 'number',
+    number: true,
+    choices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    description: 'Compression level. 0 is no compress, 9 is best compression',
+  })
+  .option('forceInclude', {
+    alias: ['force-include'],
+    type: 'array',
+    string: true,
+    description: 'Force include file paths or modules',
   })
   .command(
     'bundle',
@@ -47,11 +61,13 @@ yargs(hideBin(process.argv))
     //   });
     // },
     ({ argv }) => {
+      console.log({ argv });
+
       if (argv.verbose) {
         logger.info(`bundle starting`, argv);
       }
 
-      cliBundle(argv).catch((err) => {
+      cliBundle(argv as BirudaCliArguments).catch((err) => {
         logger.error(err);
         process.exitCode = 1;
       });

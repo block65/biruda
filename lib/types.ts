@@ -6,9 +6,11 @@ export interface BirudaConfigFileProperties {
   platform?: string;
   externals?: string[];
   forceInclude?: string[];
+  // forceBuild?: string[];
   ignorePackages?: string[];
   archiveFormat?: 'zip' | 'tar';
   sourceMapSupport?: boolean;
+  compressionLevel?: number;
 }
 
 export interface BirudaCliArguments {
@@ -17,9 +19,11 @@ export interface BirudaCliArguments {
   output?: string;
   // baseDir?: string;
   entrypoint?: string[];
-  archiveFormat?: string;
+  archiveFormat?: 'zip' | 'tar';
   forceInclude?: string[];
+  // forceBuild?: string[];
   sourceMapSupport?: boolean;
+  compressionLevel?: number;
 }
 
 export interface BirudaBuildOptions {
@@ -31,5 +35,7 @@ export interface BirudaBuildOptions {
   externals?: (string | RegExp)[];
   ignorePackages?: (string | RegExp)[];
   forceInclude?: string[];
+  // forceBuild?: string[];
   sourceMapSupport?: boolean;
+  compressionLevel?: number;
 }

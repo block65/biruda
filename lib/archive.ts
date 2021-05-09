@@ -22,16 +22,19 @@ export async function archiveFiles({
   outDir,
   files = new Set(),
   extras = new Set(),
-  format = 'tar',
+  format,
+  compressionLevel = constants.Z_BEST_SPEED,
 }: {
   base: string;
   pkgDir: string;
   outDir: string;
   files: Set<string>;
   extras: Set<string>;
-  format?: 'zip' | 'tar';
+  format: 'zip' | 'tar';
+  compressionLevel?: number;
 }) {
   logger.info(
+    { compressionLevel },
     `Archiving approx %d files and %d extras...`,
     files.size,
     extras.size,
@@ -42,12 +45,12 @@ export async function archiveFiles({
     format,
     isTar
       ? {
-          gzip: true,
+          gzip: compressionLevel > 0,
           gzipOptions: {
-            level: constants.Z_BEST_SPEED,
+            level: compressionLevel,
           },
         }
-      : { zlib: { level: constants.Z_BEST_SPEED } },
+      : { zlib: { level: compressionLevel } },
   );
 
   // good practice to catch warnings (ie stat failures and other non-blocking errors)
@@ -79,7 +82,9 @@ export async function archiveFiles({
     }, 500),
   );
 
-  const archiveFileName = `pkg.${format}${isTar ? '.gz' : ''}`;
+  const archiveFileName = `pkg.${format}${
+    isTar && compressionLevel > 0 ? '.gz' : ''
+  }`;
   const output = createWriteStream(`${outDir}/${archiveFileName}`);
 
   // listen for all archive data to be written

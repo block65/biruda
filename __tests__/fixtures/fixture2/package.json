@@ -1,0 +1,14 @@
+{
+  "name": "@block65/biruda-fixtures",
+  "version": "1.0.3",
+  "main": "dist/src/index.js",
+  "license": "MIT",
+  "dependencies": {
+
+  },
+  "devDependencies": {
+    "@block65/biruda": "*",
+    "typescript": "4.1.3",
+    "@types/node": "14.14.21"
+  }
+}
