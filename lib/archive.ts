@@ -1,14 +1,14 @@
 import archiver from 'archiver';
 import { createWriteStream, existsSync, lstatSync, realpathSync } from 'fs';
 import { dirname, join, relative } from 'path';
-import { URL } from 'url';
 import { constants } from 'zlib';
-import { basicThrottle, maybeMakeAbsolute } from './utils.js';
 import { logger as parentLogger } from './logger.js';
+import { basicThrottle, maybeMakeAbsolute } from './utils.js';
 
 const logger = parentLogger.child({ name: 'archive' });
 
 const regex = /.*?(node_modules.*)/;
+
 function maybeReducePathToNodeModules(path: string, fallback: string): string {
   if (path.match(regex)) {
     return path.replace(regex, '$1');

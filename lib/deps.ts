@@ -1,11 +1,9 @@
 import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
 import * as fs from 'fs';
-import { existsSync, readFileSync } from 'fs';
-import { access, readFile, stat } from 'fs/promises';
-import mem from 'mem';
+import { access, readFile } from 'fs/promises';
 import micromatch from 'micromatch';
 import pMemoize from 'p-memoize';
-import { dirname, join, normalize, relative } from 'path';
+import { dirname, normalize, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { logger as parentLogger } from './logger.js';

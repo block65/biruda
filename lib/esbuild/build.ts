@@ -5,8 +5,8 @@ import pkgUp from 'pkg-up';
 import { dir } from 'tmp-promise';
 import type { PackageJson, TsConfigJson } from 'type-fest';
 import { pathToFileURL, URL } from 'url';
-import type { BirudaBuildOptions } from '../types.js';
 import { logger } from '../logger.js';
+import type { BirudaBuildOptions } from '../types.js';
 import { loadJson } from '../utils.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
@@ -56,7 +56,7 @@ export async function build(
   });
 
   process.on('beforeExit', () =>
-    cleanup().catch((err) => console.warn(err.message)),
+    cleanup().catch((err) => logger.warn({ err }, err.message)),
   );
 
   const externals: (string | RegExp)[] = [

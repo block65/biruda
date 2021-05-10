@@ -3,9 +3,9 @@
 import 'source-map-support/register.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import type { BirudaCliArguments } from '../lib/types.js';
-import { logger } from '../lib/logger.js';
 import { cliBundle } from '../lib/bundle.js';
+import { logger } from '../lib/logger.js';
+import type { BirudaCliArguments } from '../lib/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions
 yargs(hideBin(process.argv))

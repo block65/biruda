@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { basename, dirname, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
