@@ -86,6 +86,7 @@ export async function build(
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: true, // 'external',
     // errorLimit: 1,
+    format: 'esm',
     write: false,
     define: {
       NODE_ENV: 'production',
