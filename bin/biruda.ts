@@ -59,7 +59,7 @@ yargs(hideBin(process.argv))
     },
     (argv) => {
       if (argv.verbose) {
-        logger.info(`bundle starting`, argv.argv);
+        logger.info(`bundle starting`, argv);
       }
 
       cliBundle(argv as BirudaCliArguments).catch((err) => {

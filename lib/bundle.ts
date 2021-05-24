@@ -203,6 +203,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     version: packageJson.version,
     license: packageJson.license,
     private: packageJson.private,
+    type: 'module', // always esm
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(
     //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
