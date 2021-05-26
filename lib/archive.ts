@@ -110,15 +110,18 @@ export async function archiveFiles({
   // pipe archive data to the output
   archive.pipe(output);
 
-  logger.trace(
-    'Archiving pkgDir %s into %s',
-    pkgDir,
-    dirname(relative(base, pkgDir)),
-  );
-  archive.directory(pkgDir, dirname(relative(base, pkgDir)));
+  const workingModuleDir = dirname(relative(base, pkgDir));
+
+  logger.trace('Archiving pkgDir %s into %s', pkgDir, workingModuleDir);
+  archive.directory(pkgDir, workingModuleDir);
 
   logger.trace(`Adding %d files...`, files.size);
   files.forEach((file) => {
+    // exclude the original package.json, we added it above into the workingModuleDir
+    if (file === join(workingModuleDir, 'package.json')) {
+      return;
+    }
+
     archive.file(join(base, file), {
       name: file,
       // prefix: base,
