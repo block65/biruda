@@ -105,7 +105,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const { entryPoints } = resolvedConfig;
 
-  if (!entryPoints) {
+  if (Object.keys(entryPoints).length === 0) {
     throw new TypeError('No entryPoints provided');
   }
 
@@ -209,7 +209,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     version: packageJson.version,
     license: packageJson.license,
     private: packageJson.private,
-    type: 'module', // always esm
+    type: 'module', // always blue, always blue, always ESM
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(
     //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
