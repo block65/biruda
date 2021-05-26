@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, resolve } from 'path';
+import { basename, dirname, resolve, extname } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { archiveFiles } from './archive.js';
@@ -37,7 +37,7 @@ function parseEntryPoints(
   if (Array.isArray(entrypoint)) {
     if (entrypoint.length === 1) {
       return {
-        index: entrypoint[0],
+        [basename(entrypoint[0], extname(entrypoint[0]))]: entrypoint[0],
       };
     }
 
@@ -118,8 +118,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   };
 
   const { outputFiles, outputDir, packageJson, cleanup } = await build(options);
-
-  logger.info({ outputFiles, resolvedConfig });
 
   const { files, base } = await traceFiles(
     outputFiles.map(([, fileName]) => fileName),

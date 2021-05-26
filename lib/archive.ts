@@ -110,8 +110,12 @@ export async function archiveFiles({
   // pipe archive data to the output
   archive.pipe(output);
 
-  logger.trace('Archiving pkgDir %s', pkgDir);
-  archive.directory(pkgDir, false);
+  logger.trace(
+    'Archiving pkgDir %s into %s',
+    pkgDir,
+    dirname(relative(base, pkgDir)),
+  );
+  archive.directory(pkgDir, dirname(relative(base, pkgDir)));
 
   logger.trace(`Adding %d files...`, files.size);
   files.forEach((file) => {

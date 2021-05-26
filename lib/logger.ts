@@ -6,7 +6,7 @@ export const logger = createLogger({
   prettyPrint: {
     colorize: !!supportsColor.stdout,
     translateTime: true,
-    ignore: 'hostname,pid',
+    ignore: 'hostname,pid,time',
   },
 });
 

@@ -82,6 +82,7 @@ export async function build(
     // absWorkingDir: dirname(entryPoint),
     bundle: true,
     minify: false,
+    treeShaking: true,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: true, // 'external',

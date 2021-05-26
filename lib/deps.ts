@@ -6,6 +6,7 @@ import pMemoize from 'p-memoize';
 import { dirname, normalize, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
+import * as util from 'util';
 import { logger as parentLogger } from './logger.js';
 import { loadJson, relativeUrl, resolvePackageJson } from './utils.js';
 
@@ -35,11 +36,11 @@ async function readManifestInner(
 ): Promise<PackageJson | null>;
 async function readManifestInner(
   dirOrFile: string | URL,
-  throwOnMissing: true,
+  throwOnMissing?: true,
 ): Promise<PackageJson>;
 async function readManifestInner(
   dirOrFile: string | URL,
-  throwOnMissing = false,
+  throwOnMissing?: boolean,
 ): Promise<PackageJson | null> {
   const file = dirOrFile.toString().endsWith('package.json')
     ? dirOrFile
@@ -57,7 +58,7 @@ async function readManifestInner(
 
 export const readManifest = pMemoize(readManifestInner, {
   cacheKey: ([fdirOrFile]) => fdirOrFile,
-}) as typeof readManifestInner;
+});
 
 export async function findWorkspaceRoot(initial = process.cwd()) {
   logger.trace('Finding workspace root from %s', initial);
@@ -219,10 +220,11 @@ export async function traceFiles(
       log: options.verbose,
       ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
       // paths: [base],
+      exportsOnly: true,
     },
   );
 
-  const { fileList /* esmFileList */, reasons } = traceResult;
+  const { fileList, esmFileList, reasons } = traceResult;
 
   if (traceResult.warnings.length > 0) {
     logger.warn('Trace warnings: %d', traceResult.warnings.length);
@@ -249,7 +251,9 @@ export async function traceFiles(
     base: workspaceRoot,
     reasons,
     files: new Set(
-      fileList.filter((file) => !resolvedEntryPoints.includes(file)),
+      [...fileList, ...esmFileList].filter(
+        (file) => !resolvedEntryPoints.includes(file),
+      ),
     ),
   };
 }
