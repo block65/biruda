@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import { createRequire } from 'module';
 import { dirname, isAbsolute, relative, resolve } from 'path';
 import pkgUp from 'pkg-up';
+import { PackageJson } from 'type-fest';
 import type { AsyncReturnType, JsonValue } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 
@@ -173,6 +174,10 @@ export function basicDebounce<T extends (...args: any[]) => any>(
 
 export async function loadJson<T = JsonValue>(file: URL): Promise<T> {
   return JSON.parse(await fs.readFile(file, 'utf-8'));
+}
+
+export async function loadPackageJson(file: URL): Promise<PackageJson> {
+  return loadJson<PackageJson>(file);
 }
 
 export function relativeUrl(from: URL, to: URL): string {

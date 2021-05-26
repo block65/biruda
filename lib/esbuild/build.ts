@@ -7,7 +7,7 @@ import type { PackageJson, TsConfigJson } from 'type-fest';
 import { pathToFileURL, URL } from 'url';
 import { logger } from '../logger.js';
 import type { BirudaBuildOptions } from '../types.js';
-import { loadJson } from '../utils.js';
+import { loadJson, loadPackageJson } from '../utils.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
 export async function build(
@@ -40,7 +40,7 @@ export async function build(
 
   const packageJsonUrl = pathToFileURL(packageJsonPath);
 
-  const packageJson = await loadJson<PackageJson>(packageJsonUrl);
+  const packageJson = await loadPackageJson(packageJsonUrl);
 
   const tsConfigJson = await loadJson<TsConfigJson>(
     new URL('tsconfig.json', packageJsonUrl),

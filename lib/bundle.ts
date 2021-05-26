@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, resolve, extname } from 'path';
+import { basename, dirname, extname, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { archiveFiles } from './archive.js';
 import { traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
-import type {
+import {
   BirudaBuildOptions,
   BirudaCliArguments,
   BirudaConfigFileProperties,
@@ -50,8 +50,13 @@ function parseEntryPoints(
   return entrypoint || {};
 }
 
+type ConfigFileExports =
+  | BirudaConfigFileProperties
+  | (() => BirudaConfigFileProperties)
+  | (() => Promise<BirudaConfigFileProperties>);
+
 export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const configFileProps = cliArguments.config
+  const configPropsOrFunction: ConfigFileExports = cliArguments.config
     ? (
         await import(
           resolve(
@@ -62,7 +67,12 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ).default
     : ({} as BirudaConfigFileProperties);
 
-  const outDir = cliArguments.output || configFileProps.outDir;
+  const config: BirudaConfigFileProperties =
+    configPropsOrFunction instanceof Function
+      ? await configPropsOrFunction()
+      : configPropsOrFunction;
+
+  const outDir = cliArguments.output || config.outDir;
 
   if (!outDir) {
     throw new TypeError('No outDir');
@@ -75,24 +85,22 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const mergedEntryPoints = {
     ...parseEntryPoints(cliArguments.entrypoint),
-    ...parseEntryPoints(configFileProps.entryPoints),
+    ...parseEntryPoints(config.entryPoints),
   };
 
   const resolvedConfig = {
     // default until we can reliably move to nodejs enable-source-maps
     // which doesnt seem to work reliably right now (april 2021)
     sourceMapSupport: true,
-    verbose: cliArguments.verbose || configFileProps.verbose,
-    ...configFileProps,
+    verbose: cliArguments.verbose || config.verbose,
+    ...config,
     forceInclude: [
       ...(cliArguments.forceInclude || []),
-      ...(configFileProps.forceInclude || []),
+      ...(config.forceInclude || []),
     ],
     entryPoints: mergedEntryPoints,
-    archiveFormat:
-      cliArguments.archiveFormat || configFileProps.archiveFormat || 'tar',
-    compressionLevel:
-      cliArguments.compressionLevel ?? configFileProps.compressionLevel,
+    archiveFormat: cliArguments.archiveFormat || config.archiveFormat || 'tar',
+    compressionLevel: cliArguments.compressionLevel ?? config.compressionLevel,
   };
 
   const { entryPoints } = resolvedConfig;

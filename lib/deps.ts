@@ -6,9 +6,8 @@ import pMemoize from 'p-memoize';
 import { dirname, normalize, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
-import * as util from 'util';
 import { logger as parentLogger } from './logger.js';
-import { loadJson, relativeUrl, resolvePackageJson } from './utils.js';
+import { loadPackageJson, relativeUrl, resolvePackageJson } from './utils.js';
 
 const logger = parentLogger.child({ name: 'deps' });
 
@@ -144,7 +143,7 @@ export async function traceDependencies(
       Object.entries(deps).map(
         async ([name, version]): Promise<RecursiveDependency> => {
           const modulePackageJsonUrl = await resolvePackageJson(name, base);
-          const packageJson = await loadJson<PackageJson>(modulePackageJsonUrl);
+          const packageJson = await loadPackageJson(modulePackageJsonUrl);
 
           const nextPath = new URL('.', modulePackageJsonUrl);
           const beenHere = circuitBreaker.has(nextPath.toString());

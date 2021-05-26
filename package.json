@@ -3,7 +3,7 @@
   "version": "4.0.0",
   "license": "UNLICENSED",
   "sideEffects": false,
-  "exports": "./dist/lib/biruda.js",
+  "exports": "./dist/lib/index.js",
   "type": "module",
   "bin": {
     "biruda": "dist/bin/biruda.js"
