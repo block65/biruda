@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, extname, resolve } from 'path';
+import { basename, dirname, extname, resolve, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { archiveFiles } from './archive.js';
@@ -19,6 +19,11 @@ import {
 } from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
+
+type ConfigFileExports =
+  | BirudaConfigFileProperties
+  | (() => BirudaConfigFileProperties)
+  | (() => Promise<BirudaConfigFileProperties>);
 
 function parseEntryPoints(
   entrypoint?: string[] | Record<string, string> | string,
@@ -49,11 +54,6 @@ function parseEntryPoints(
   }
   return entrypoint || {};
 }
-
-type ConfigFileExports =
-  | BirudaConfigFileProperties
-  | (() => BirudaConfigFileProperties)
-  | (() => Promise<BirudaConfigFileProperties>);
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
   const configPropsOrFunction: ConfigFileExports = cliArguments.config
@@ -93,6 +93,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     // which doesnt seem to work reliably right now (april 2021)
     sourceMapSupport: true,
     verbose: cliArguments.verbose || config.verbose,
+    sourceType: cliArguments.sourceType || config.sourceType || 'esm',
     ...config,
     forceInclude: [
       ...(cliArguments.forceInclude || []),
@@ -127,10 +128,12 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const { outputFiles, outputDir, packageJson, cleanup } = await build(options);
 
-  const { files, base } = await traceFiles(
+  const baseDir = pathToFileURL(dirname(outputDir));
+
+  const { files, workspaceRoot } = await traceFiles(
     outputFiles.map(([, fileName]) => fileName),
     {
-      baseDir: pathToFileURL(outputDir),
+      baseDir,
       ignorePackages: [
         ...(resolvedConfig.forceInclude || []),
         ...(resolvedConfig.ignorePackages || []),
@@ -156,16 +159,17 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   await serialPromiseMapAccum(options.forceInclude || [], async (name) => {
     // local path
     if (name.startsWith('.') || name.startsWith('/')) {
-      // const rel = relative(base, name);
-      logger.trace('force including file path %s', name);
-      extras.add(name);
+      const rel = relative(fileURLToPath(baseDir), name);
+      logger.trace({ name, baseDir }, 'force including file path %s', rel);
+      extras.add(rel);
       return;
     }
 
     // default, assume module
     await getDependencyPathsFromModule(
       name,
-      base,
+      baseDir,
+      workspaceRoot,
       function shouldDescend(modulePath, moduleName) {
         const include = !modulePaths.has(modulePath.toString());
         if (include) {
@@ -177,12 +181,22 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         return include;
       },
       function includeCallback(absPath) {
-        const relPath = relativeUrl(base, absPath);
+        const relPath = relativeUrl(workspaceRoot, absPath);
         if (!files.has(relPath)) {
-          logger.trace('[%s] including path %s', name, relPath);
+          logger.trace(
+            { absPath: absPath.toString() },
+            '[%s] including path %s',
+            name,
+            relPath,
+          );
           extras.add(relPath);
         } else {
-          logger.trace('[%s] already got path %s', name, relPath);
+          logger.trace(
+            { absPath: absPath.toString() },
+            '[%s] already got path %s',
+            name,
+            relPath,
+          );
         }
       },
     );
@@ -209,7 +223,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     version: packageJson.version,
     license: packageJson.license,
     private: packageJson.private,
-    type: 'module', // always blue, always blue, always ESM
+    ...(options.sourceType === 'esm' && { type: 'module' }),
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(
     //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
@@ -239,7 +253,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     files,
     extras,
     outDir,
-    base: fileURLToPath(base),
+    base: fileURLToPath(workspaceRoot),
     format: resolvedConfig.archiveFormat,
     compressionLevel: resolvedConfig.compressionLevel,
   });

@@ -1,11 +1,10 @@
 import fs from 'fs/promises';
 import { createRequire } from 'module';
-import { dirname, isAbsolute, relative, resolve } from 'path';
+import { isAbsolute, relative, resolve } from 'path';
+import pkgDir from 'pkg-dir';
 import pkgUp from 'pkg-up';
-import { PackageJson } from 'type-fest';
-import type { AsyncReturnType, JsonValue } from 'type-fest';
+import type { AsyncReturnType, JsonValue, PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
-
 import { readManifest } from './deps.js';
 import { logger as parentLogger } from './logger.js';
 
@@ -23,40 +22,47 @@ export function dedupeArray<T extends any>(arr: T[]): T[] {
 }
 
 // async for future esm compat
-export async function resolvePackageJson(
+export async function resolveModuleRoot(
   name: string,
   base: URL,
+  workspaceRoot: URL,
+  from?: string,
 ): Promise<URL> {
   const require = createRequire(base);
 
-  try {
-    return pathToFileURL(
-      require.resolve(`${name}/package.json`, {
-        paths: [base.pathname],
-      }),
-    );
-  } catch (err) {
-    if (err.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
-      if (logger.isLevelEnabled('debug')) {
-        logger.warn({ base, name }, 'WARN: %s', err.message);
-      }
+  const initialPaths = [fileURLToPath(base), fileURLToPath(workspaceRoot)];
 
-      const path = await pkgUp({
-        cwd: dirname(
-          require.resolve(name, {
-            paths: [base.pathname],
-          }),
-        ),
-      });
+  const resolvedFrom =
+    from &&
+    require.resolve(from, {
+      paths: initialPaths,
+    });
+  const fromPkgDir = resolvedFrom && (await pkgDir(resolvedFrom));
 
-      if (path === null) {
-        throw new Error(`Unable to resolve path $path`);
-      }
+  const paths = Array.from(
+    new Set<string>([
+      ...(fromPkgDir ? [fromPkgDir] : []),
+      ...initialPaths,
+      // ...(require.resolve.paths(name) || []),
+    ]),
+  );
 
-      return pathToFileURL(path);
-    }
-    throw err;
+  const resolved = require.resolve(name, {
+    paths,
+  });
+
+  // native module
+  if (resolved === name) {
+    return new URL(`node:${name}`);
   }
+
+  const path = await pkgDir(resolved);
+
+  if (!path) {
+    throw new Error(`Unable to resolve manifest for ${name}`);
+  }
+
+  return pathToFileURL(`${path}/`);
 }
 
 export function serialPromiseMapAccum<
@@ -66,7 +72,7 @@ export function serialPromiseMapAccum<
     idx: number,
     arr: T[],
   ) => Promise<any>,
-  R = AsyncReturnType<F>
+  R = AsyncReturnType<F>,
 >(arr: T[], fn: F): Promise<R[]> {
   return arr.reduce(async (promise, ...args): Promise<R[]> => {
     const accum = await promise;
@@ -78,52 +84,74 @@ export function serialPromiseMapAccum<
 export async function getDependencyPathsFromModule(
   name: string,
   base: URL,
+  workspaceRoot: URL,
   descendCallback: (path: URL, name: string) => boolean,
   includeCallback: (path: URL, name: string) => void,
   parents: string[] = [],
 ): Promise<void> {
-  const logPrefixString = [name, parents].join('->');
+  const logPrefixString = [...parents, name].join('->');
 
-  logger.debug('[%s] Resolving deps', logPrefixString, name);
-  const modulePath = await resolvePackageJson(name, base);
+  logger.debug(
+    { parents },
+    '[%s] Resolving module root for %s',
+    logPrefixString,
+    name,
+  );
 
-  if (!descendCallback(modulePath, name)) {
+  const moduleRoot = await resolveModuleRoot(
+    name,
+    base,
+    workspaceRoot,
+    parents[parents.length - 1],
+  ).catch((err) => {
+    if (
+      err.code === 'MODULE_NOT_FOUND' &&
+      !name.startsWith('@types') && // definitelytyped
+      !name.startsWith('type-') && // type-fest etc
+      !name.startsWith('babel-runtime') // HACK
+    ) {
+      throw err;
+    }
+    logger.warn(err.message);
+  });
+
+  if (!moduleRoot) {
     return;
   }
 
-  const pkgJson = await readManifest(modulePath);
+  // native module, skip
+  if (moduleRoot.protocol === 'node:') {
+    return;
+  }
+
+  if (!descendCallback(moduleRoot, name)) {
+    return;
+  }
+
+  logger.trace('[%s] resolved module to %s', logPrefixString, moduleRoot);
+
+  const pkgJson = await readManifest(moduleRoot);
 
   if (!pkgJson) {
     throw new Error(`Unable to locate manifest for ${name}`);
   }
 
-  includeCallback(new URL('package.json', modulePath), name);
+  includeCallback(new URL('package.json', moduleRoot), name);
 
-  dedupeArray([
-    // 'package.json',
-    // 'LICENSE',
-    // 'LICENSE.md',
-    ...(pkgJson.files || []),
-  ]).forEach((glob) => {
-    includeCallback(new URL(glob, modulePath), name);
+  dedupeArray(pkgJson.files || []).forEach((glob) => {
+    includeCallback(new URL(glob, moduleRoot), name);
   });
 
   if (pkgJson.main) {
-    includeCallback(new URL(pkgJson.main, modulePath), name);
+    includeCallback(new URL(pkgJson.main, moduleRoot), name);
   }
 
   if (!pkgJson.files) {
     logger.trace('[%s] No files[] in  manifest, adding all', logPrefixString);
-    includeCallback(new URL('.', modulePath), name);
+    includeCallback(moduleRoot, name);
   }
 
   const dependencies = Object.keys(pkgJson.dependencies || {});
-
-  logger.trace(
-    '[%s] Found %d deps',
-    logPrefixString,
-    Object.keys(dependencies).length,
-  );
 
   // at leaf node
   if (dependencies.length === 0) {
@@ -131,11 +159,18 @@ export async function getDependencyPathsFromModule(
     return; // [modulePath];
   }
 
+  logger.trace(
+    '[%s] %d deps are listed in manifest, recursing',
+    logPrefixString,
+    Object.keys(dependencies).length,
+  );
+
   await serialPromiseMapAccum(dependencies, async (pkgDep) => {
     // logger.trace('[%s] Found dep %s', pkgDep, name);
     return getDependencyPathsFromModule(
       pkgDep,
-      modulePath,
+      moduleRoot,
+      workspaceRoot,
       descendCallback,
       includeCallback,
       [...parents, name],

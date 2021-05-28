@@ -6,6 +6,7 @@ export interface BirudaConfigFileProperties {
   platform?: string;
   externals?: string[];
   forceInclude?: string[];
+  sourceType?: 'esm' | 'cjs';
   // forceBuild?: string[];
   ignorePackages?: string[];
   archiveFormat?: 'zip' | 'tar';
@@ -21,6 +22,7 @@ export interface BirudaCliArguments {
   entrypoint?: string[];
   archiveFormat?: 'zip' | 'tar';
   forceInclude?: string[];
+  sourceType?: 'esm' | 'cjs';
   // forceBuild?: string[];
   sourceMapSupport?: boolean;
   compressionLevel?: number;
@@ -31,6 +33,7 @@ export interface BirudaBuildOptions {
   outDir: string;
   entryPoints: Record<string, string>;
   // baseDir: string;
+  sourceType?: 'esm' | 'cjs';
   platform: string;
   externals?: (string | RegExp)[];
   ignorePackages?: (string | RegExp)[];

@@ -39,8 +39,12 @@ yargs(hideBin(process.argv))
         .option('archiveFormat', {
           alias: ['a'],
           choices: ['tar', 'zip'],
-          default: 'tar',
           description: 'Archive format - tar or zip',
+        })
+        .option('sourceType', {
+          alias: ['t'],
+          choices: ['esm', 'cjs'],
+          description: 'Source type - ES Modules (esm) or CommonJS (cjs)',
         })
         .option('compressionLevel', {
           alias: ['z'],

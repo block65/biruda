@@ -7,15 +7,15 @@ import { basicThrottle, maybeMakeAbsolute } from './utils.js';
 
 const logger = parentLogger.child({ name: 'archive' });
 
-const regex = /.*?(node_modules.*)/;
+// const regex = /.*?(node_modules.*)/;
 
-function maybeReducePathToNodeModules(path: string, fallback: string): string {
-  if (path.match(regex)) {
-    return path.replace(regex, '$1');
-  }
-  logger.warn('%s hit fallback', path);
-  return `node_modules/${fallback}`;
-}
+// function maybeReducePathToNodeModules(path: string, fallback: string): string {
+//   if (path.match(regex)) {
+//     return path.replace(regex, '$1');
+//   }
+//   logger.warn('%s hit fallback', path);
+//   return `node_modules/${fallback}`;
+// }
 
 export async function archiveFiles({
   base,
@@ -138,17 +138,25 @@ export async function archiveFiles({
     if (exists) {
       const stats = lstatSync(absolutePath);
       if (stats.isDirectory()) {
-        const prefix = maybeReducePathToNodeModules(absolutePath, file);
+        // const prefix = maybeReducePathToNodeModules(absolutePath, file);
+        //
+        // if (file !== prefix) {
+        //   logger.warn({ file, prefix, absolutePath });
+        // }
 
-        logger.trace('Archiving %s into %s (using dir)', file, prefix);
-        archive.directory(absolutePath, prefix);
+        logger.trace('Archiving %s (using dir)', file);
+        archive.directory(absolutePath, file /* , prefix */);
       } else if (stats.isFile()) {
-        const prefix = maybeReducePathToNodeModules(absolutePath, file);
+        // const prefix = maybeReducePathToNodeModules(absolutePath, file);
         // const prefix = `node_modules/${name}`;
+        //
+        // if (file !== prefix) {
+        //   logger.warn({ file, prefix, absolutePath });
+        // }
 
-        logger.trace('Archiving %s as %s (using file)', file, prefix);
+        logger.trace('Archiving %s (using file)', file /* , prefix */);
         archive.file(absolutePath, {
-          name: prefix,
+          name: file,
         });
       } else if (stats.isSymbolicLink()) {
         // const prefix = maybeReducePathToNodeModules(absolutePath, file);
@@ -172,7 +180,7 @@ export async function archiveFiles({
         logger.warn('Ignored %s. Not a dir or file', file);
       }
     } else if (looksGlobbish) {
-      logger.trace('Archiving glob %s (using glob with base %s)', file, base);
+      logger.trace('Archiving %s (using glob with base %s)', file, base);
 
       archive.glob(
         file,

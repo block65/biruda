@@ -10,9 +10,7 @@ import type { BirudaBuildOptions } from '../types.js';
 import { loadJson, loadPackageJson } from '../utils.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
-export async function build(
-  options: BirudaBuildOptions,
-): Promise<{
+export async function build(options: BirudaBuildOptions): Promise<{
   outputFiles: [entryPointName: string, fileName: string][];
   outputDir: string;
   tsConfigJson: TsConfigJson;
@@ -81,13 +79,13 @@ export async function build(
     // metafile: '/tmp/meta.json',
     // absWorkingDir: dirname(entryPoint),
     bundle: true,
-    minify: false,
+    minify: true,
     treeShaking: true,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: true, // 'external',
     // errorLimit: 1,
-    format: 'esm',
+    format: options.sourceType,
     write: false,
     define: {
       NODE_ENV: 'production',

@@ -7,20 +7,9 @@ import { dirname, normalize, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { logger as parentLogger } from './logger.js';
-import { loadPackageJson, relativeUrl, resolvePackageJson } from './utils.js';
+import { relativeUrl } from './utils.js';
 
 const logger = parentLogger.child({ name: 'deps' });
-
-export interface RecursiveDependency extends Dependency {
-  deps: RecursiveDependency[];
-}
-
-export interface Dependency {
-  name: string;
-  version: string;
-  files?: string[];
-  path: URL;
-}
 
 interface Warning extends Error {
   lineText?: string;
@@ -41,9 +30,12 @@ async function readManifestInner(
   dirOrFile: string | URL,
   throwOnMissing?: boolean,
 ): Promise<PackageJson | null> {
-  const file = dirOrFile.toString().endsWith('package.json')
-    ? dirOrFile
-    : new URL('package.json', pathToFileURL(`${dirOrFile.toString()}/`));
+  const dirOrFileAsUrl =
+    dirOrFile instanceof URL ? dirOrFile : pathToFileURL(dirOrFile);
+
+  const file = dirOrFileAsUrl.pathname.endsWith('package.json')
+    ? dirOrFileAsUrl
+    : new URL('./package.json', `${dirOrFileAsUrl.toString()}/`);
 
   const exists = await access(file, fs.constants.F_OK)
     .then(() => true)
@@ -117,73 +109,6 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
   return null;
 }
 
-function flattenDeps(initialChildren: RecursiveDependency[]): Dependency[] {
-  // console.log({ children });
-  return initialChildren.flatMap((child): Dependency[] => {
-    const { deps, ...childWithoutChildren } = child;
-    // console.log({ child, flat: flattenDeps(child.children) });
-    return deps.length > 0
-      ? [childWithoutChildren, ...flattenDeps(deps)]
-      : [childWithoutChildren];
-  });
-}
-
-export async function traceDependencies(
-  initialDeps: Record<string, string>,
-  startPath: URL,
-  // mode = 'production',
-): Promise<Dependency[]> {
-  const circuitBreaker = new Set<string>();
-
-  function recursiveResolveDependencies(
-    deps: Record<string, string>,
-    base: URL,
-  ): Promise<RecursiveDependency[]> {
-    return Promise.all(
-      Object.entries(deps).map(
-        async ([name, version]): Promise<RecursiveDependency> => {
-          const modulePackageJsonUrl = await resolvePackageJson(name, base);
-          const packageJson = await loadPackageJson(modulePackageJsonUrl);
-
-          const nextPath = new URL('.', modulePackageJsonUrl);
-          const beenHere = circuitBreaker.has(nextPath.toString());
-
-          // if we've already been here, we just return empty children as
-          // a previous iteration has already returned the children
-          if (beenHere) {
-            return {
-              name,
-              version,
-              path: nextPath,
-              files: packageJson.files,
-              deps: [],
-            };
-          }
-
-          circuitBreaker.add(nextPath.toString());
-
-          const children = await recursiveResolveDependencies(
-            packageJson.dependencies || {},
-            nextPath,
-          );
-
-          return {
-            name,
-            version,
-            path: nextPath,
-            files: packageJson.files,
-            deps: children,
-          };
-        },
-      ),
-    );
-  }
-
-  return flattenDeps(
-    await recursiveResolveDependencies(initialDeps, startPath),
-  );
-}
-
 export async function traceFiles(
   entryPoints: string[],
   options: {
@@ -193,7 +118,7 @@ export async function traceFiles(
   },
 ): Promise<{
   files: Set<string>;
-  base: URL;
+  workspaceRoot: URL;
   reasons: NodeFileTraceReasons;
 }> {
   const { baseDir } = options;
@@ -247,7 +172,7 @@ export async function traceFiles(
     .map(([file]) => file);
 
   return {
-    base: workspaceRoot,
+    workspaceRoot,
     reasons,
     files: new Set(
       [...fileList, ...esmFileList].filter(
