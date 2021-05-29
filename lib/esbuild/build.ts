@@ -72,20 +72,15 @@ export async function build(options: BirudaBuildOptions): Promise<{
     platform: options.platform === 'browser' ? 'browser' : 'node',
     logLevel: options.verbose ? 'info' : 'error',
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
-    entryPoints: entryPointPaths, // [maybeMakeAbsolute(entryPoint, baseDir)],
-    // outfile: esBuildOutputFilePath,
+    entryPoints: entryPointPaths,
     outdir: outputDir,
-    // write: false,
-    // metafile: '/tmp/meta.json',
-    // absWorkingDir: dirname(entryPoint),
     bundle: true,
-    minify: true,
+    minify: options.minify,
     treeShaking: true,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
-    sourcemap: true, // 'external',
-    // errorLimit: 1,
-    format: options.sourceType,
+    sourcemap: 'external',
+    format: 'esm' || options.sourceType,
     write: false,
     define: {
       NODE_ENV: 'production',
@@ -97,9 +92,15 @@ export async function build(options: BirudaBuildOptions): Promise<{
         ),
       }),
     ],
+    // metafile: '/tmp/meta.json',
+    // absWorkingDir: dirname(entryPoint),
+    // errorLimit: 1,
   };
 
-  logger.info({ entryPointPaths }, 'Building entryPoints...');
+  logger.info(
+    { entryPointPaths, finalEsBuildOptions },
+    'Building entryPoints...',
+  );
 
   const buildResult = await esbuild.build(finalEsBuildOptions);
 

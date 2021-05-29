@@ -16,7 +16,6 @@ yargs(hideBin(process.argv))
       y.option('verbose', {
         alias: ['v'],
         type: 'boolean',
-        default: false,
         description: 'Run with verbose logging',
       })
         .option('config', {
@@ -45,6 +44,10 @@ yargs(hideBin(process.argv))
           alias: ['t'],
           choices: ['esm', 'cjs'],
           description: 'Source type - ES Modules (esm) or CommonJS (cjs)',
+        })
+        .option('debug', {
+          alias: ['d'],
+          type: 'boolean',
         })
         .option('compressionLevel', {
           alias: ['z'],

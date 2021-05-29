@@ -94,6 +94,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     sourceMapSupport: true,
     verbose: cliArguments.verbose || config.verbose,
     sourceType: cliArguments.sourceType || config.sourceType || 'esm',
+    minify:
+      cliArguments.debug ||
+      config.debug ||
+      process.env.NODE_ENV === 'production',
     ...config,
     forceInclude: [
       ...(cliArguments.forceInclude || []),
@@ -125,6 +129,8 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     ]),
     // forceBuild: resolvedConfig.forceBuild,
   };
+
+  logger.info({ options }, 'build options');
 
   const { outputFiles, outputDir, packageJson, cleanup } = await build(options);
 
