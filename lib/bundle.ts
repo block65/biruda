@@ -94,10 +94,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     sourceMapSupport: true,
     verbose: cliArguments.verbose || config.verbose,
     sourceType: cliArguments.sourceType || config.sourceType || 'esm',
-    minify:
+    debug:
       cliArguments.debug ||
       config.debug ||
-      process.env.NODE_ENV === 'production',
+      process.env.NODE_ENV === 'development',
     ...config,
     forceInclude: [
       ...(cliArguments.forceInclude || []),

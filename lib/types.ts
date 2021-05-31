@@ -36,7 +36,7 @@ export interface BirudaBuildOptions {
   entryPoints: Record<string, string>;
   // baseDir: string;
   sourceType?: 'esm' | 'cjs';
-  minify?: boolean;
+  debug?: boolean;
   platform: string;
   externals?: (string | RegExp)[];
   ignorePackages?: (string | RegExp)[];

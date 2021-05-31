@@ -75,7 +75,7 @@ export async function build(options: BirudaBuildOptions): Promise<{
     entryPoints: entryPointPaths,
     outdir: outputDir,
     bundle: true,
-    minify: options.minify,
+    minify: !options.debug,
     treeShaking: true,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
