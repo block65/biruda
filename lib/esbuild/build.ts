@@ -80,6 +80,7 @@ export async function build(options: BirudaBuildOptions): Promise<{
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: 'external',
+    sourcesContent: false, // unlikely to attach a debugger in production node
     format: 'esm' || options.sourceType,
     write: false,
     define: {
