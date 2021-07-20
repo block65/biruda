@@ -2,7 +2,6 @@ import fs from 'fs/promises';
 import { createRequire } from 'module';
 import { isAbsolute, relative, resolve } from 'path';
 import pkgDir from 'pkg-dir';
-import pkgUp from 'pkg-up';
 import type { AsyncReturnType, JsonValue, PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { readManifest } from './deps.js';

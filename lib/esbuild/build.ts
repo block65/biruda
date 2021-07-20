@@ -117,36 +117,35 @@ export async function build(options: BirudaBuildOptions): Promise<{
     throw new Error('Missing outputFiles from build result');
   }
 
-  const outputFiles = buildResult.outputFiles.map((outputFile): [
-    entryPointName: string,
-    fileName: string,
-  ] => {
-    const [outputFilePathBasename, ...exts] = basename(outputFile.path).split(
-      /\./,
-    );
+  const outputFiles = buildResult.outputFiles.map(
+    (outputFile): [entryPointName: string, fileName: string] => {
+      const [outputFilePathBasename, ...exts] = basename(outputFile.path).split(
+        /\./,
+      );
 
-    // find the entrypoint that matches this output file
-    const [entryPointName /* , entryPointFileForOutput */] =
-      Object.entries(entryPoints).find(([, entryPointFile]) => {
-        return (
-          basename(entryPointFile).replace(/\.[t|j]s$/, '') ===
-          outputFilePathBasename
-        );
-      }) || [];
+      // find the entrypoint that matches this output file
+      const [entryPointName /* , entryPointFileForOutput */] =
+        Object.entries(entryPoints).find(([, entryPointFile]) => {
+          return (
+            basename(entryPointFile).replace(/\.[t|j]s$/, '') ===
+            outputFilePathBasename
+          );
+        }) || [];
 
-    if (!entryPointName) {
-      logger.warn({ entryPoints, outputFilePathBasename, exts });
-      throw new Error('Cant find matching entry point for build output ');
-    }
+      if (!entryPointName) {
+        logger.warn({ entryPoints, outputFilePathBasename, exts });
+        throw new Error('Cant find matching entry point for build output ');
+      }
 
-    const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
+      const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
 
-    writeFileSync(fileName, outputFile.contents, {
-      encoding: 'utf-8',
-    });
+      writeFileSync(fileName, outputFile.contents, {
+        encoding: 'utf-8',
+      });
 
-    return [entryPointName, fileName];
-  });
+      return [entryPointName, fileName];
+    },
+  );
 
   logger.info(`Build completed. Output is in ${outputDir}`);
 

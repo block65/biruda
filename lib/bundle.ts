@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, extname, resolve, relative } from 'path';
+import { basename, dirname, extname, relative, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { archiveFiles } from './archive.js';
