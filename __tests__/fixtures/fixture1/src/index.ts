@@ -1,4 +1,4 @@
-import { s3 } from '../lib';
+import { s3 } from '../lib/index.js';
 
 s3.copyObject({
   Bucket: 'lol',
