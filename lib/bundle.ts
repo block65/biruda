@@ -165,8 +165,12 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   await serialPromiseMapAccum(options.forceInclude || [], async (name) => {
     // local path
     if (name.startsWith('.') || name.startsWith('/')) {
-      const rel = relative(fileURLToPath(baseDir), name);
-      logger.trace({ name, baseDir }, 'force including file path %s', rel);
+      const rel = relative(fileURLToPath(workspaceRoot), name);
+      logger.trace(
+        { name, workspaceRoot: workspaceRoot.toString() },
+        'force including file path %s',
+        rel,
+      );
       extras.add(rel);
       return;
     }
@@ -255,11 +259,11 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   );
 
   await archiveFiles({
+    base: fileURLToPath(workspaceRoot),
     pkgDir: outputDir,
     files,
     extras,
     outDir,
-    base: fileURLToPath(workspaceRoot),
     format: resolvedConfig.archiveFormat,
     compressionLevel: resolvedConfig.compressionLevel,
   });
