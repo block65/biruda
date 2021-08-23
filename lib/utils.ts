@@ -1,6 +1,7 @@
+import findUp from 'find-up';
 import fs from 'fs/promises';
 import { createRequire } from 'module';
-import { isAbsolute, relative, resolve } from 'path';
+import { isAbsolute, relative, resolve, join, dirname } from 'path';
 import pkgDir from 'pkg-dir';
 import type { AsyncReturnType, JsonValue, PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
@@ -46,22 +47,55 @@ export async function resolveModuleRoot(
     ]),
   );
 
-  const resolved = require.resolve(name, {
+  const resolvedModuleEntryPoint = require.resolve(name, {
     paths,
   });
 
   // native module
-  if (resolved === name) {
+  if (resolvedModuleEntryPoint === name) {
     return new URL(`node:${name}`);
   }
 
-  const path = await pkgDir(resolved);
+  // this helps support monorepos with symlinks
+  // where the full module name may not be the same as the module dir
+  const packageRhs = name.split('/').at(-1);
 
-  if (!path) {
+  if (!packageRhs) {
+    throw new Error(`No package RHS for ${name}`);
+  }
+
+  // NOTE: we have to use this technique to find the package root because
+  // looking from the resolved entrypoint above for a package.json
+  // is unreliable, as there may be a package.json in the module tree
+  // even if it is not the root of the actual package
+  // tldr: this is intended to be the literal package root, not just some
+  // child dir with a package.json in it.
+  const pathToModuleRoot = await findUp(
+    async (directory) => {
+      const parent = join(directory, packageRhs);
+      const maybeManifest = join(parent, 'package.json');
+      const found = await findUp.exists(maybeManifest);
+      logger.trace({ directory, maybeManifest, found });
+      return found ? parent : undefined;
+    },
+    {
+      type: 'directory',
+      cwd: dirname(resolvedModuleEntryPoint),
+      allowSymlinks: true,
+    },
+  );
+
+  logger.trace(
+    { pathToModuleRoot, resolvedModuleEntryPoint },
+    'pathToModuleRoot for %s',
+    name,
+  );
+
+  if (!pathToModuleRoot) {
     throw new Error(`Unable to resolve manifest for ${name}`);
   }
 
-  return pathToFileURL(`${path}/`);
+  return pathToFileURL(`${pathToModuleRoot}/`);
 }
 
 export function serialPromiseMapAccum<
