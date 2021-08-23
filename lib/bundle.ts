@@ -22,8 +22,8 @@ const logger = parentLogger.child({ name: 'bundle' });
 
 type ConfigFileExports =
   | BirudaConfigFileProperties
-  | (() => BirudaConfigFileProperties)
-  | (() => Promise<BirudaConfigFileProperties>);
+  | ((cliArguments: BirudaCliArguments) => BirudaConfigFileProperties)
+  | ((cliArguments: BirudaCliArguments) => Promise<BirudaConfigFileProperties>);
 
 function parseEntryPoints(
   entrypoint?: string[] | Record<string, string> | string,
@@ -69,7 +69,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const config: BirudaConfigFileProperties =
     configPropsOrFunction instanceof Function
-      ? await configPropsOrFunction()
+      ? await configPropsOrFunction(cliArguments)
       : configPropsOrFunction;
 
   const outDir = cliArguments.output || config.outDir;
@@ -159,7 +159,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   }
 
   const extras = new Set<string>();
-  const modulePaths = new Set<string>(options.forceInclude);
+  const modulePaths = new Set<string>();
 
   // should run serially due to path descending and caching
   await serialPromiseMapAccum(options.forceInclude || [], async (name) => {
