@@ -136,16 +136,29 @@ export async function getDependencyPathsFromModule(
     base,
     workspaceRoot,
     parents[parents.length - 1],
-  ).catch((err) => {
+  ).catch((err: Error | NodeJS.ErrnoException) => {
+    // NOTE: it's possible that a package has an erroneous dep
+    // which doesnt exist or errors on require (missing exports/main)
+    // We have to ignore it here because it may not even be require'd
+    // by the parent package at runtime
     if (
-      err.code === 'MODULE_NOT_FOUND' &&
-      !name.startsWith('@types') && // definitelytyped
-      !name.startsWith('type-') && // type-fest etc
-      !name.startsWith('babel-runtime') // HACK
+      ('code' in err && err.code == 'MODULE_NOT_FOUND') ||
+      err.message?.match(/cannot find module/i)
     ) {
-      throw err;
+      // this check just keeps noise to a minimum
+      if (
+        // definitelytyped
+        !name.startsWith('@types') &&
+        // type-fest etc
+        !name.startsWith('type-') &&
+        // HACK
+        !name.startsWith('babel-runtime')
+      ) {
+        logger.warn(err.message);
+      }
+      return;
     }
-    logger.warn(err.message);
+    throw err;
   });
 
   if (!moduleRoot) {
