@@ -1,26 +1,12 @@
 // all optional because they might be on command like
-export interface BirudaConfigFileProperties {
-  entryPoints?: Record<string, string>;
-  verbose?: boolean;
-  outDir?: string;
-  platform?: string;
-  externals?: string[];
-  forceInclude?: string[];
-  sourceType?: 'esm' | 'cjs';
-  debug?: boolean;
-  // forceBuild?: string[];
-  ignorePackages?: string[];
-  archiveFormat?: 'zip' | 'tar';
-  sourceMapSupport?: boolean;
-  compressionLevel?: number;
-}
+import { URL } from 'url';
 
 export interface BirudaCliArguments {
   config?: string;
   verbose?: boolean;
-  output?: string;
+  outDir?: string;
   // baseDir?: string;
-  entrypoint?: string[];
+  entryPoints?: string[];
   archiveFormat?: 'zip' | 'tar';
   forceInclude?: string[];
   sourceType?: 'esm' | 'cjs';
@@ -28,13 +14,15 @@ export interface BirudaCliArguments {
   // forceBuild?: string[];
   sourceMapSupport?: boolean;
   compressionLevel?: number;
+  externals?: string[];
+  ignorePackages?: string[];
 }
 
 export interface BirudaBuildOptions {
   verbose?: boolean;
   outDir: string;
   entryPoints: Record<string, string>;
-  // baseDir: string;
+  workingDirectory: URL;
   sourceType?: 'esm' | 'cjs';
   debug?: boolean;
   platform: string;
@@ -44,4 +32,5 @@ export interface BirudaBuildOptions {
   // forceBuild?: string[];
   sourceMapSupport?: boolean;
   compressionLevel?: number;
+  archiveFormat?: 'zip' | 'tar';
 }

@@ -5,7 +5,7 @@ import { isAbsolute, relative, resolve, join, dirname } from 'path';
 import pkgDir from 'pkg-dir';
 import type { AsyncReturnType, JsonValue, PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
-import { readManifest } from './deps.js';
+import { loadPackageJson } from './deps.js';
 import { logger as parentLogger } from './logger.js';
 
 const logger = parentLogger.child({ name: 'utils' });
@@ -176,24 +176,25 @@ export async function getDependencyPathsFromModule(
 
   logger.trace('[%s] resolved module to %s', logPrefixString, moduleRoot);
 
-  const pkgJson = await readManifest(moduleRoot);
+  const pkgJson = await loadPackageJson(moduleRoot);
 
   if (!pkgJson) {
     throw new Error(`Unable to locate manifest for ${name}`);
   }
 
-  includeCallback(new URL('package.json', moduleRoot), name);
-
-  dedupeArray(pkgJson.files || []).forEach((glob) => {
-    includeCallback(new URL(glob, moduleRoot), name);
-  });
-
-  if (pkgJson.main) {
-    includeCallback(new URL(pkgJson.main, moduleRoot), name);
-  }
-
-  if (!pkgJson.files) {
-    logger.trace('[%s] No files[] in  manifest, adding all', logPrefixString);
+  if (pkgJson.files) {
+    includeCallback(new URL('package.json', moduleRoot), name);
+    dedupeArray(pkgJson.files).forEach((glob) => {
+      includeCallback(new URL(glob, moduleRoot), name);
+    });
+    if (pkgJson.main) {
+      includeCallback(new URL(pkgJson.main, moduleRoot), name);
+    }
+  } else {
+    logger.trace(
+      '[%s] No files[] in manifest, using module root',
+      logPrefixString,
+    );
     includeCallback(moduleRoot, name);
   }
 
@@ -253,12 +254,8 @@ export function basicDebounce<T extends (...args: any[]) => any>(
   };
 }
 
-export async function loadJson<T = JsonValue>(file: URL): Promise<T> {
+export async function readJsonFile<T = JsonValue>(file: URL): Promise<T> {
   return JSON.parse(await fs.readFile(file, 'utf-8'));
-}
-
-export async function loadPackageJson(file: URL): Promise<PackageJson> {
-  return loadJson<PackageJson>(file);
 }
 
 export function relativeUrl(from: URL, to: URL): string {

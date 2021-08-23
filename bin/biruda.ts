@@ -24,16 +24,22 @@ yargs(hideBin(process.argv))
           default: 'biruda.config.js',
           description: 'Path to config file',
         })
-        .option('output', {
+        .option('outDir', {
           alias: ['o'],
           type: 'string',
           description: 'Name of output bundle file',
         })
-        .option('entrypoint', {
+        .option('entryPoints', {
           alias: ['e'],
           type: 'array',
           string: true,
-          description: 'Entrypoint for bundle',
+          description: 'Entrypoints for bundle',
+        })
+        .option('externals', {
+          alias: ['x'],
+          type: 'array',
+          string: true,
+          description: 'Externals for bundle',
         })
         .option('archiveFormat', {
           alias: ['a'],
@@ -70,7 +76,7 @@ yargs(hideBin(process.argv))
       }
 
       cliBundle(argv as BirudaCliArguments).catch((err) => {
-        logger.error(err);
+        logger.fatal(err);
         process.exitCode = 1;
       });
     },

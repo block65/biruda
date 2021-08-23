@@ -3,11 +3,10 @@ import * as fs from 'fs';
 import { access, readFile } from 'fs/promises';
 import micromatch from 'micromatch';
 import pMemoize from 'p-memoize';
-import { dirname, normalize, relative } from 'path';
+import { dirname, relative } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { logger as parentLogger } from './logger.js';
-import { relativeUrl } from './utils.js';
 
 const logger = parentLogger.child({ name: 'deps' });
 
@@ -18,15 +17,15 @@ interface Warning extends Error {
   column?: number;
 }
 
-async function readManifestInner(
+async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: false,
 ): Promise<PackageJson | null>;
-async function readManifestInner(
+async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: true,
 ): Promise<PackageJson>;
-async function readManifestInner(
+async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: boolean,
 ): Promise<PackageJson | null> {
@@ -47,21 +46,22 @@ async function readManifestInner(
   return null;
 }
 
-export const readManifest = pMemoize(readManifestInner, {
+export const loadPackageJson = pMemoize(loadPackageJsonInner, {
   cacheKey: ([fdirOrFile]) => fdirOrFile,
 });
 
-export async function findWorkspaceRoot(initial = process.cwd()) {
-  logger.trace('Finding workspace root from %s', initial);
+export async function findWorkspaceRoot(initial: URL): Promise<URL> {
+  const initialAsPath = fileURLToPath(initial);
+  logger.trace('Finding workspace root from %s', initialAsPath);
 
   let previousDirectory = null;
-  let currentDirectory = normalize(initial);
+  let currentDirectory = initialAsPath;
 
   do {
     // suppress eslint here because this needs to be sequential/ serial
     // and cannot be parallelised
     // eslint-disable-next-line no-await-in-loop
-    const manifest = await readManifest(currentDirectory);
+    const manifest = await loadPackageJson(currentDirectory);
 
     if (manifest) {
       const workspaces = Array.isArray(manifest.workspaces)
@@ -75,7 +75,7 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
           currentDirectory,
         );
 
-        const relativePath = relative(currentDirectory, initial);
+        const relativePath = relative(currentDirectory, initialAsPath);
         if (
           relativePath === '' ||
           micromatch([relativePath], workspaces, { bash: true }).length > 0
@@ -86,7 +86,7 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
             currentDirectory,
           );
 
-          return currentDirectory;
+          return pathToFileURL(currentDirectory);
         }
 
         logger.trace(
@@ -95,7 +95,7 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
           currentDirectory,
         );
 
-        return null;
+        return initial;
       }
       logger.trace('No workspaces in %s', currentDirectory);
     } else {
@@ -106,49 +106,41 @@ export async function findWorkspaceRoot(initial = process.cwd()) {
     currentDirectory = dirname(currentDirectory);
   } while (currentDirectory !== previousDirectory);
 
-  return null;
+  return initial;
 }
 
 export async function traceFiles(
   entryPoints: string[],
   options: {
-    baseDir: URL;
+    workspaceRoot?: URL;
+    workingDirectory?: URL;
     verbose?: boolean;
     ignorePackages?: string[];
   },
 ): Promise<{
   files: Set<string>;
-  workspaceRoot: URL;
   reasons: NodeFileTraceReasons;
 }> {
-  const { baseDir } = options;
-
-  const maybeWorkspaceRoot = await findWorkspaceRoot(fileURLToPath(baseDir));
-  const workspaceRoot = maybeWorkspaceRoot
-    ? pathToFileURL(maybeWorkspaceRoot)
-    : baseDir;
-  // const processCwd = dirname(manifestFilename);
-
-  logger.info(
-    entryPoints,
-    'Tracing dependencies using base: %s, workspace: %s',
-    relativeUrl(workspaceRoot, baseDir),
-    workspaceRoot,
-  );
-
   const traceResult = await nodeFileTrace(
-    entryPoints.map((entry) => fileURLToPath(new URL(entry, baseDir))),
+    entryPoints, // .map((entry) => fileURLToPath(new URL(entry, baseDir))),
     {
-      base: fileURLToPath(workspaceRoot),
-      processCwd: fileURLToPath(baseDir),
+      // needed in monorepo situations, as nft wont include files above this dir
+      base: options.workspaceRoot && fileURLToPath(options.workspaceRoot),
+      processCwd:
+        options.workingDirectory && fileURLToPath(options.workingDirectory),
       log: options.verbose,
       ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
-      // paths: [base],
       exportsOnly: true,
     },
   );
 
   const { fileList, esmFileList, reasons } = traceResult;
+
+  logger.info(
+    'Found %d files, %d esmFileList in trace',
+    fileList.length,
+    esmFileList.length,
+  );
 
   if (traceResult.warnings.length > 0) {
     logger.warn('Trace warnings: %d', traceResult.warnings.length);
@@ -172,7 +164,6 @@ export async function traceFiles(
     .map(([file]) => file);
 
   return {
-    workspaceRoot,
     reasons,
     files: new Set(
       [...fileList, ...esmFileList].filter(

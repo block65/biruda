@@ -1,6 +1,7 @@
 import archiver from 'archiver';
 import { createWriteStream, existsSync, lstatSync, realpathSync } from 'fs';
 import { dirname, join, relative } from 'path';
+import { fileURLToPath, URL } from 'url';
 import { constants } from 'zlib';
 import { logger as parentLogger } from './logger.js';
 import { basicThrottle, maybeMakeAbsolute } from './utils.js';
@@ -18,16 +19,18 @@ const logger = parentLogger.child({ name: 'archive' });
 // }
 
 export async function archiveFiles({
-  base,
-  pkgDir,
+  workspaceRoot,
+  bundleSource,
+  bundleDest,
   outDir,
   files = new Set(),
   extras = new Set(),
   format,
   compressionLevel = constants.Z_BEST_SPEED,
 }: {
-  base: string;
-  pkgDir: string;
+  workspaceRoot: URL;
+  bundleSource: string;
+  bundleDest: string;
   outDir: string;
   files: Set<string>;
   extras: Set<string>;
@@ -40,6 +43,8 @@ export async function archiveFiles({
     files.size,
     extras.size,
   );
+
+  const base = fileURLToPath(workspaceRoot);
 
   const isTar = format === 'tar';
   const archive = archiver(
@@ -75,12 +80,12 @@ export async function archiveFiles({
   archive.on(
     'progress',
     basicThrottle((progress) => {
-      logger.trace(
+      logger.info(
         'Progress: %s of ~%s files archived',
         progress.entries.processed,
         progress.entries.total,
       );
-    }, 500),
+    }, 1000),
   );
 
   const archiveFileName = `pkg.${format}${
@@ -110,15 +115,13 @@ export async function archiveFiles({
   // pipe archive data to the output
   archive.pipe(output);
 
-  const workingModuleDir = dirname(relative(base, pkgDir));
+  logger.trace('Archiving pkgDir %s into %s', bundleSource, bundleDest);
+  archive.directory(bundleSource, bundleDest);
 
-  logger.trace('Archiving pkgDir %s into %s', pkgDir, workingModuleDir);
-  archive.directory(pkgDir, workingModuleDir);
-
-  logger.trace(`Adding %d files...`, files.size);
+  logger.trace(Array.from(files), `Adding %d files...`, files.size);
   files.forEach((file) => {
     // exclude the original package.json, we added it above into the workingModuleDir
-    if (file === join(workingModuleDir, 'package.json')) {
+    if (file === join(bundleDest, 'package.json')) {
       return;
     }
 
@@ -128,7 +131,7 @@ export async function archiveFiles({
     });
   });
 
-  logger.trace('Archiving %d extras', extras.size);
+  logger.trace(Array.from(extras), 'Archiving %d extras', extras.size);
 
   extras.forEach((file) => {
     const looksGlobbish = file.includes('*');

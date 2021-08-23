@@ -2,7 +2,7 @@ import createLogger from 'pino';
 import supportsColor from 'supports-color';
 
 export const logger = createLogger({
-  level: 'trace',
+  // level: 'trace',
   prettyPrint: {
     colorize: !!supportsColor.stdout,
     translateTime: true,
