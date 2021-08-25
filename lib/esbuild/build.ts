@@ -67,7 +67,7 @@ export async function build(options: EsBuildOptions): Promise<{
     // ...['decimal.js'],
   ];
 
-  logger.debug({ externals }, 'Resolved externals');
+  // logger.debug({ externals }, 'Resolved externals');
 
   // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
@@ -101,7 +101,7 @@ export async function build(options: EsBuildOptions): Promise<{
     // errorLimit: 1,
   };
 
-  logger.info(finalEsBuildOptions, 'Building with esbuild...');
+  logger.debug(finalEsBuildOptions, 'Building with esbuild...');
 
   const buildResult = await esbuild.build(finalEsBuildOptions);
 

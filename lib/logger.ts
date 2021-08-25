@@ -20,7 +20,7 @@ function formatLevel(level: number) {
     case 50: //error
       return chalk.red('ERROR');
     case 40: // warn
-      return chalk.yellow('WARN');
+      return chalk.bgYellow.black.bold('WARN');
     case 30: //info
       return chalk.blue('INFO');
     case 20: //debug

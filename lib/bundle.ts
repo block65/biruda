@@ -111,7 +111,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     logger.level = resolvedConfig.logLevel;
   }
 
-  logger.fatal({ resolvedConfig, cliArguments, configFileProps });
+  logger.trace({ resolvedConfig, cliArguments, configFileProps });
 
   const { entryPoints } = resolvedConfig;
 
@@ -156,8 +156,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     },
   );
 
-  logger.warn({ resolvedConfig }, 'resolvedConfig');
-
   if (resolvedConfig.extraModules && resolvedConfig.extraModules.length > 0) {
     logger.info(
       resolvedConfig.extraModules,
@@ -190,7 +188,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       function includeCallback(path) {
         const relPath = relativeFileUrl(workspaceRoot, path);
         if (!files.has(new URL(`./${relPath}`, workspaceRoot).toString())) {
-          logger.info(
+          logger.trace(
             { path: path.toString() },
             '[%s] including path %s',
             name,
@@ -198,7 +196,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
           );
           extras.add(relPath);
         } else {
-          logger.info(
+          logger.trace(
             { absPath: path.toString() },
             '[%s] already got path %s',
             name,

@@ -208,13 +208,6 @@ export async function getDependencyPathsFromModule(
   // Check for symlinked module in a monorepo
   const relPath = relativeFileUrl(workspaceRoot, moduleRoot);
   if (!relPath.startsWith('node_modules')) {
-    logger.warn({
-      name,
-      relPath,
-      workspaceRoot,
-      moduleRoot,
-      KEK: new URL(`./node_modules/${name}`, workspaceRoot),
-    });
     includeCallback(new URL(`./node_modules/${name}`, workspaceRoot), name);
   }
 
