@@ -1,7 +1,9 @@
 import archiver from 'archiver';
-import { createWriteStream, existsSync, lstatSync, realpathSync } from 'fs';
+import fs, { createWriteStream } from 'fs';
+import { access, lstat, realpath } from 'fs/promises';
+import glob from 'glob';
 import { dirname, join, relative } from 'path';
-import { fileURLToPath, URL } from 'url';
+import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { constants } from 'zlib';
 import { logger as parentLogger } from './logger.js';
 import { basicThrottle, maybeMakeAbsolute } from './utils.js';
@@ -47,17 +49,17 @@ export async function archiveFiles({
   const base = fileURLToPath(workspaceRoot);
 
   const isTar = format === 'tar';
-  const archive = archiver(
-    format,
-    isTar
+  const archive = archiver(format, {
+    ...(isTar
       ? {
           gzip: compressionLevel > 0,
           gzipOptions: {
             level: compressionLevel,
           },
         }
-      : { zlib: { level: compressionLevel } },
-  );
+      : { zlib: { level: compressionLevel } }),
+    statConcurrency: 1, // guaranteed order,
+  });
 
   // good practice to catch warnings (ie stat failures and other non-blocking errors)
   archive.on('warning', (err) => {
@@ -112,18 +114,25 @@ export async function archiveFiles({
     logger.trace('Data has been drained');
   });
 
+  // let entryCount = 0;
+  // archive.on('entry', (entry) => {
+  //   entryCount += 1;
+  //   logger.info('entry %d: %s', entryCount, entry.name);
+  // });
+
   // pipe archive data to the output
   archive.pipe(output);
 
   logger.trace('Archiving pkgDir %s into %s', bundleSource, bundleDest);
   archive.directory(bundleSource, bundleDest);
 
-  logger.trace(Array.from(files), `Adding %d files...`, files.size);
+  logger.debug(/*Array.from(files), */ `Adding %d files...`, files.size);
   files.forEach((file) => {
     // exclude the original package.json, we added it above into the workingModuleDir
     if (file === join(bundleDest, 'package.json')) {
       return;
     }
+    // logger.trace('archive.file %s {name:%s}', join(base, file), file);
 
     archive.file(join(base, file), {
       name: file,
@@ -131,15 +140,20 @@ export async function archiveFiles({
     });
   });
 
-  logger.trace(Array.from(extras), 'Archiving %d extras', extras.size);
+  logger.debug(Array.from(extras), 'Archiving %d extras', extras.size);
 
-  extras.forEach((file) => {
-    const looksGlobbish = file.includes('*');
-    const absolutePath = maybeMakeAbsolute(file, base);
-    const exists = !looksGlobbish && existsSync(absolutePath);
+  for await (const path of extras) {
+    const absolutePath = maybeMakeAbsolute(path, base);
+
+    const exists = await access(absolutePath, fs.constants.F_OK)
+      .then(() => true)
+      .catch(() => false);
+    const looksGlobbish = path.includes('*');
+
+    // logger.debug('absolutePath: %s - exists: %s', absolutePath, exists);
 
     if (exists) {
-      const stats = lstatSync(absolutePath);
+      const stats = await lstat(absolutePath);
       if (stats.isDirectory()) {
         // const prefix = maybeReducePathToNodeModules(absolutePath, file);
         //
@@ -147,8 +161,8 @@ export async function archiveFiles({
         //   logger.warn({ file, prefix, absolutePath });
         // }
 
-        logger.trace('Archiving %s (using dir)', file);
-        archive.directory(absolutePath, file /* , prefix */);
+        logger.debug('Archiving %s (using dir)', path);
+        archive.directory(absolutePath, path /* , prefix */);
       } else if (stats.isFile()) {
         // const prefix = maybeReducePathToNodeModules(absolutePath, file);
         // const prefix = `node_modules/${name}`;
@@ -157,9 +171,9 @@ export async function archiveFiles({
         //   logger.warn({ file, prefix, absolutePath });
         // }
 
-        logger.trace('Archiving %s (using file)', file /* , prefix */);
+        logger.debug('Archiving %s (using file)', path /* , prefix */);
         archive.file(absolutePath, {
-          name: file,
+          name: path,
         });
       } else if (stats.isSymbolicLink()) {
         // const prefix = maybeReducePathToNodeModules(absolutePath, file);
@@ -169,35 +183,67 @@ export async function archiveFiles({
         // otherwise it's off by one
         const symlinkTarget = relative(
           dirname(absolutePath),
-          realpathSync(absolutePath),
+          await realpath(absolutePath),
         );
 
-        logger.trace(
+        logger.debug(
           'Archiving symlink %s -> %s (using symlink)',
-          file,
+          absolutePath,
           symlinkTarget,
         );
 
-        archive.symlink(file, symlinkTarget);
+        archive.symlink(absolutePath, symlinkTarget);
       } else {
-        logger.warn('Ignored %s. Not a dir or file', file);
+        logger.warn('Ignored %s. Not a dir or file', absolutePath);
       }
-    } else if (looksGlobbish) {
-      logger.trace('Archiving %s (using glob with base %s)', file, base);
-
-      archive.glob(
-        file,
-        {
-          cwd: base,
-        },
-        {
-          // prefix,
-        },
-      );
     } else {
-      logger.trace('File %s doesnt exist and isnt globbish, ignoring', file);
+      if (looksGlobbish) {
+        logger.trace('Archiving %s (using glob with base %s)', path, base);
+
+        //NOTE: Archivers own glob is sloowwwwww, so we use our own
+        await new Promise<void>((resolve, reject) => {
+          glob(
+            path,
+            {
+              debug: logger.levelVal < 30,
+              cwd: base,
+              absolute: true,
+            },
+            function (err, globFiles) {
+              if (err) {
+                return reject(err);
+              }
+
+              logger.trace(
+                'Archiving %d files (via glob %s)',
+                globFiles.length,
+                path,
+              );
+
+              globFiles.forEach((f) =>
+                archive.file(f, {
+                  name: relative(fileURLToPath(workspaceRoot), f),
+                }),
+              );
+              resolve();
+            },
+          );
+        });
+
+        // archive.glob(
+        //   absolutePath,
+        //   {
+        //     cwd: base,
+        //   },
+        //   {
+        //     // prefix,
+        //   },
+        // );
+      } else {
+        logger.warn('Ignored %s. doesnt exist', absolutePath);
+      }
     }
-  });
+  }
 
   logger.trace('Finalizing archive');
   return archive.finalize();

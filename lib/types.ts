@@ -3,12 +3,13 @@ import { URL } from 'url';
 
 export interface BirudaCliArguments {
   config?: string;
-  verbose?: boolean;
+  logLevel?: 'trace' | 'debug' | 'info';
   outDir?: string;
   // baseDir?: string;
   entryPoints?: string[];
   archiveFormat?: 'zip' | 'tar';
-  forceInclude?: string[];
+  extraModules?: string[];
+  extraPaths?: string[];
   sourceType?: 'esm' | 'cjs';
   debug?: boolean;
   // forceBuild?: string[];
@@ -19,7 +20,7 @@ export interface BirudaCliArguments {
 }
 
 export interface BirudaBuildOptions {
-  verbose?: boolean;
+  logLevel?: 'trace' | 'debug' | 'info';
   outDir: string;
   entryPoints: Record<string, string>;
   workingDirectory: URL;
@@ -28,7 +29,8 @@ export interface BirudaBuildOptions {
   platform: string;
   externals?: (string | RegExp)[];
   ignorePackages?: (string | RegExp)[];
-  forceInclude?: string[];
+  extraModules?: string[];
+  extraPaths?: string[];
   // forceBuild?: string[];
   sourceMapSupport?: boolean;
   compressionLevel?: number;

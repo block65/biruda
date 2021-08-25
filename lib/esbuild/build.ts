@@ -4,10 +4,12 @@ import { basename, dirname, join } from 'path';
 import { dir } from 'tmp-promise';
 import type { TsConfigJson } from 'type-fest';
 import { fileURLToPath, URL } from 'url';
-import { logger } from '../logger.js';
+import { logger as parentLogger } from '../logger.js';
 import type { BirudaBuildOptions } from '../types.js';
 import { readJsonFile } from '../utils.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
+
+const logger = parentLogger.child({ name: 'esbuild' });
 
 export async function build(options: BirudaBuildOptions): Promise<{
   outputFiles: [entryPointName: string, fileName: string][];
@@ -59,9 +61,12 @@ export async function build(options: BirudaBuildOptions): Promise<{
 
   // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
+  const verboseLogging =
+    options.logLevel && ['trace', 'debug'].includes(options.logLevel);
+
   const finalEsBuildOptions: esbuild.BuildOptions = {
     platform: options.platform === 'browser' ? 'browser' : 'node',
-    logLevel: options.verbose ? 'info' : 'error',
+    logLevel: verboseLogging ? 'info' : undefined,
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints,
     outdir: outputDir,

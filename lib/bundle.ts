@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, extname, relative, resolve, join } from 'path';
+import { basename, dirname, extname, join, relative, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { archiveFiles } from './archive.js';
 import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
@@ -10,8 +10,7 @@ import { BirudaBuildOptions, BirudaCliArguments } from './types.js';
 import {
   dedupeArray,
   getDependencyPathsFromModule,
-  relativeUrl,
-  serialPromiseMapAccum,
+  relativeFileUrl,
 } from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
@@ -79,14 +78,44 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
           cliArguments,
           await loadPackageJson(workingDirectory),
         )
-      : {
-          ...configPropsOrFunction,
-          ...cliArguments,
-        };
+      : configPropsOrFunction;
 
-  logger.fatal(config);
+  const mergedEntryPoints = parseEntryPoints(config.entryPoints);
 
-  const outDir = config.outDir;
+  const resolvedConfig = {
+    // default until we can reliably move to nodejs enable-source-maps
+    // which doesnt seem to work reliably right now (april 2021)
+    sourceMapSupport: true,
+    logLevel:
+      config.logLevel ||
+      (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
+    sourceType: config.sourceType || 'esm',
+    debug: config.debug || process.env.NODE_ENV === 'development',
+    ...config,
+    extraModules: [
+      ...(cliArguments.extraModules || []),
+      ...(config.extraModules || []),
+    ],
+    extraPaths: [
+      ...(cliArguments.extraPaths || []),
+      ...(config.extraPaths || []),
+    ],
+    entryPoints: mergedEntryPoints,
+    archiveFormat: cliArguments.archiveFormat || config.archiveFormat || 'tar',
+    compressionLevel: cliArguments.compressionLevel ?? config.compressionLevel,
+  };
+
+  if (resolvedConfig.logLevel) {
+    logger.level = resolvedConfig.logLevel;
+  }
+
+  const { entryPoints } = resolvedConfig;
+
+  if (Object.keys(entryPoints).length === 0) {
+    throw new TypeError('No entryPoints provided');
+  }
+
+  const outDir = resolvedConfig.outDir;
 
   if (!outDir) {
     throw new TypeError('No outDir');
@@ -97,33 +126,6 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     recursive: true,
   });
 
-  const mergedEntryPoints = parseEntryPoints(config.entryPoints);
-
-  const resolvedConfig = {
-    // default until we can reliably move to nodejs enable-source-maps
-    // which doesnt seem to work reliably right now (april 2021)
-    sourceMapSupport: true,
-    verbose: process.env.NODE_ENV === 'development',
-    sourceType: config.sourceType || 'esm',
-    debug: config.debug || process.env.NODE_ENV === 'development',
-    ...config,
-    forceInclude: [
-      ...(cliArguments.forceInclude || []),
-      ...(config.forceInclude || []),
-    ],
-    entryPoints: mergedEntryPoints,
-    archiveFormat: cliArguments.archiveFormat || config.archiveFormat || 'tar',
-    compressionLevel: cliArguments.compressionLevel ?? config.compressionLevel,
-  };
-
-  const { entryPoints } = resolvedConfig;
-
-  logger.level = resolvedConfig.verbose ? 'trace' : 'info';
-
-  if (Object.keys(entryPoints).length === 0) {
-    throw new TypeError('No entryPoints provided');
-  }
-
   const options: BirudaBuildOptions = {
     platform: 'node',
     ...resolvedConfig,
@@ -133,15 +135,15 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ...(resolvedConfig.sourceMapSupport ? ['source-map-support'] : []),
       ...(resolvedConfig.externals || []),
     ]),
-    forceInclude: dedupeArray([
+    extraModules: dedupeArray([
       ...(resolvedConfig.sourceMapSupport ? ['source-map-support'] : []),
-      ...(resolvedConfig.forceInclude || []),
+      ...(resolvedConfig.extraModules || []),
     ]),
     // forceBuild: resolvedConfig.forceBuild,
     workingDirectory,
   };
 
-  logger.debug({ options }, 'build options');
+  logger.trace({ options }, 'build options');
 
   const { outputFiles, outputDir, cleanup } = await build(options);
 
@@ -154,8 +156,8 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     {
       workspaceRoot,
       ignorePackages: [
-        // dont need to trace forceIncludes, because we will always add everything
-        // ...(resolvedConfig.forceInclude || []),
+        // dont need to trace extraModules, because we will always add everything
+        // ...(resolvedConfig.extraModules || []),
         ...(resolvedConfig.ignorePackages || []),
         // .filter(
         //   (pkg): pkg is string => typeof pkg === 'string',
@@ -164,19 +166,20 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     },
   );
 
-  if (resolvedConfig.forceInclude) {
+  if (resolvedConfig.extraModules.length > 0) {
     logger.info(
-      resolvedConfig.forceInclude,
-      'Force including %d paths/modules',
-      resolvedConfig.forceInclude.length,
+      resolvedConfig.extraModules,
+      'Including %d modules',
+      resolvedConfig.extraModules.length,
     );
   }
 
-  const extras = new Set<string>();
+  const extras = new Set<string>(resolvedConfig.extraPaths);
   const modulePaths = new Set<string>();
 
   // should run serially due to path descending and caching
-  await serialPromiseMapAccum(options.forceInclude || [], async (name) => {
+  for await (const name of resolvedConfig.extraModules) {
+    // await serialPromiseForEach(resolvedConfig.extraModules, async (name) => {
     // local path
     if (name.startsWith('.') || name.startsWith('/')) {
       const rel = relative(fileURLToPath(workspaceRoot), name);
@@ -204,19 +207,19 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         }
         return include;
       },
-      function includeCallback(absPath) {
-        const relPath = relativeUrl(workspaceRoot, absPath);
-        if (!files.has(relPath)) {
-          logger.trace(
-            { absPath: absPath.toString() },
+      function includeCallback(path) {
+        const relPath = relativeFileUrl(workspaceRoot, path);
+        if (!files.has(new URL(`./${relPath}`, workspaceRoot).toString())) {
+          logger.info(
+            { path: path.toString() },
             '[%s] including path %s',
             name,
             relPath,
           );
           extras.add(relPath);
         } else {
-          logger.trace(
-            { absPath: absPath.toString() },
+          logger.info(
+            { absPath: path.toString() },
             '[%s] already got path %s',
             name,
             relPath,
@@ -224,23 +227,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         }
       },
     );
-  });
-
-  // try and find anything that turned out to be behind a symlink, and then
-  // add what we think might be the symlink
-  options.forceInclude?.forEach((name) => {
-    if (
-      !name.startsWith('.') &&
-      !name.startsWith('/') &&
-      ![...extras].find((file) => file.startsWith(`node_modules/${name}`))
-    ) {
-      logger.trace(
-        '%s did not have any files, assuming symlink and adding top level',
-        name,
-      );
-      extras.add(`node_modules/${name}`);
-    }
-  });
+  }
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
     name: packageJson.name,
@@ -268,7 +255,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   };
 
   await writeFile(
-    resolve(outputDir, 'package.json'),
+    join(outputDir, 'package.json'),
     JSON.stringify(newPackageJson, null, 2),
   );
 

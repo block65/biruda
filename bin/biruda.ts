@@ -9,14 +9,15 @@ import type { BirudaCliArguments } from '../lib/types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions
 yargs(hideBin(process.argv))
-  .command(
+  .command<BirudaCliArguments>(
     'bundle',
     'bundle a package',
     (y) => {
-      y.option('verbose', {
-        alias: ['v'],
-        type: 'boolean',
-        description: 'Run with verbose logging',
+      y.option('logLevel', {
+        alias: ['l'],
+        type: 'string',
+        choices: ['trace', 'debug', 'info'],
+        description: 'Sets the logging level',
       })
         .option('config', {
           alias: ['c'],
@@ -63,7 +64,7 @@ yargs(hideBin(process.argv))
           description:
             'Compression level. 0 is no compress, 9 is best compression',
         })
-        .option('forceInclude', {
+        .option('extraModules', {
           alias: ['force-include'],
           type: 'array',
           string: true,
@@ -71,11 +72,7 @@ yargs(hideBin(process.argv))
         });
     },
     (argv) => {
-      if (argv.verbose) {
-        logger.info(`bundle starting`, argv);
-      }
-
-      cliBundle(argv as BirudaCliArguments).catch((err) => {
+      cliBundle(argv).catch((err) => {
         logger.fatal(err);
         process.exitCode = 1;
       });

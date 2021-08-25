@@ -4,7 +4,8 @@ import * as util from 'util';
 
 interface LogDescriptor {
   level: number;
-  msg: string;
+  msg?: string;
+  name?: string | undefined;
   time: number;
   pid: number;
   hostname: string;
@@ -30,34 +31,44 @@ function formatLevel(level: number) {
 }
 
 export const logger = createLogger({
+  level: 'trace',
   prettyPrint: {},
   prettifier(thisArg: Logger, options: unknown) {
     return (log: LogDescriptor) => {
-      const { level, msg, time, hostname, pid, ...rest } = log;
+      const { level, msg = '', time, name, hostname, pid, ...rest } = log;
 
-      if (msg.startsWith('pino.final with prettyPrint')) {
-        return;
+      if (msg?.startsWith('pino.final with prettyPrint')) {
+        return '';
       }
+
+      const formattedName = name ? `(${name})` : '';
+      const formattedMsg = msg && ' ' + chalk.whiteBright(msg);
 
       const formattedRest =
         Object.keys(rest).length > 0
-          ? util.inspect(rest, {
+          ? ' ' +
+            util.inspect(rest, {
               colors: true,
+              compact: true,
+              sorted: true,
             })
-          : rest;
+          : '';
 
-      process.stdout.write(
-        `${formatLevel(level)}: ${new Date(
-          time,
-        ).toJSON()} ${msg}${formattedRest}\n`,
-      );
-      return true;
+      return `${formatLevel(level)}${formattedName}: ${chalk.gray(
+        new Date(time).toJSON(),
+      )}${formattedMsg}${formattedRest}\n`;
     };
   },
 });
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {
   if (lvl !== prevLvl) {
-    console.log('%s (%d) was changed to %s (%d)', lvl, val, prevLvl, prevVal);
+    logger.info(
+      'Logger level %s (%d) was changed to %s (%d)',
+      prevLvl,
+      prevVal,
+      lvl,
+      val,
+    );
   }
 });

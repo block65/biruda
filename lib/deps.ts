@@ -86,7 +86,7 @@ export async function findWorkspaceRoot(initial: URL): Promise<URL> {
             currentDirectory,
           );
 
-          return pathToFileURL(currentDirectory);
+          return pathToFileURL(`${currentDirectory}/`);
         }
 
         logger.trace(
@@ -113,22 +113,23 @@ export async function traceFiles(
   entryPoints: string[],
   options: {
     workspaceRoot?: URL;
-    workingDirectory?: URL;
-    verbose?: boolean;
+    // workingDirectory?: URL;
     ignorePackages?: string[];
   },
 ): Promise<{
   files: Set<string>;
   reasons: NodeFileTraceReasons;
 }> {
+  logger.info('Tracing %d entrypoints...', entryPoints.length);
+
   const traceResult = await nodeFileTrace(
     entryPoints, // .map((entry) => fileURLToPath(new URL(entry, baseDir))),
     {
       // needed in monorepo situations, as nft wont include files above this dir
       base: options.workspaceRoot && fileURLToPath(options.workspaceRoot),
-      processCwd:
-        options.workingDirectory && fileURLToPath(options.workingDirectory),
-      log: options.verbose,
+      // processCwd:
+      //   options.workingDirectory && fileURLToPath(options.workingDirectory),
+      log: logger.levelVal < 30,
       ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
       exportsOnly: true,
     },

@@ -98,7 +98,24 @@ export async function resolveModuleRoot(
   return pathToFileURL(`${pathToModuleRoot}/`);
 }
 
-export function serialPromiseMapAccum<
+/**
+ * @deprecated
+ * @use for await ... const
+ * @param {T[]} arr
+ * @param {(arg: T, idx: number, arr: T[]) => Promise<void>} fn
+ * @return {Promise<void>}
+ */
+export function serialPromiseForEach<T>(
+  arr: T[],
+  fn: (arg: T, idx: number, arr: T[]) => Promise<void>,
+): Promise<void> {
+  return arr.reduce(
+    (promise, ...args) => promise.then(() => fn(...args)),
+    Promise.resolve(),
+  );
+}
+
+export function serialPromiseMap<
   T,
   F extends (arg: T, idx: number, arr: T[]) => Promise<any> = (
     arg: T,
@@ -110,8 +127,12 @@ export function serialPromiseMapAccum<
   return arr.reduce(async (promise, ...args): Promise<R[]> => {
     const accum = await promise;
     const result = await fn(...args);
-    return accum.concat(result);
+    return [...accum, result];
   }, Promise.resolve([] as R[]));
+}
+
+export function relativeFileUrl(from: URL, to: URL): string {
+  return relative(fileURLToPath(from), fileURLToPath(to));
 }
 
 export async function getDependencyPathsFromModule(
@@ -182,20 +203,19 @@ export async function getDependencyPathsFromModule(
     throw new Error(`Unable to locate manifest for ${name}`);
   }
 
-  if (pkgJson.files) {
-    includeCallback(new URL('package.json', moduleRoot), name);
-    dedupeArray(pkgJson.files).forEach((glob) => {
-      includeCallback(new URL(glob, moduleRoot), name);
+  includeCallback(moduleRoot, name);
+
+  // Check for symlinked module in a monorepo
+  const relPath = relativeFileUrl(workspaceRoot, moduleRoot);
+  if (!relPath.startsWith('node_modules')) {
+    logger.warn({
+      name,
+      relPath,
+      workspaceRoot,
+      moduleRoot,
+      KEK: new URL(`./node_modules/${name}`, workspaceRoot),
     });
-    if (pkgJson.main) {
-      includeCallback(new URL(pkgJson.main, moduleRoot), name);
-    }
-  } else {
-    logger.trace(
-      '[%s] No files[] in manifest, using module root',
-      logPrefixString,
-    );
-    includeCallback(moduleRoot, name);
+    includeCallback(new URL(`./node_modules/${name}`, workspaceRoot), name);
   }
 
   const dependencies = Object.keys(pkgJson.dependencies || {});
@@ -212,7 +232,7 @@ export async function getDependencyPathsFromModule(
     Object.keys(dependencies).length,
   );
 
-  await serialPromiseMapAccum(dependencies, async (pkgDep) => {
+  await serialPromiseMap(dependencies, async (pkgDep) => {
     // logger.trace('[%s] Found dep %s', pkgDep, name);
     return getDependencyPathsFromModule(
       pkgDep,
@@ -224,8 +244,8 @@ export async function getDependencyPathsFromModule(
     );
   });
 }
-
 // create a function that will definitely run at least once, every `delay` seconds
+
 export function basicThrottle<T extends (...args: any[]) => any>(
   callback: T,
   delay: number,
@@ -241,8 +261,8 @@ export function basicThrottle<T extends (...args: any[]) => any>(
     }
   };
 }
-
 // create a function that will run at least once `delay` seconds after the last call
+
 export function basicDebounce<T extends (...args: any[]) => any>(
   callback: T,
   delay: number,
@@ -256,8 +276,4 @@ export function basicDebounce<T extends (...args: any[]) => any>(
 
 export async function readJsonFile<T = JsonValue>(file: URL): Promise<T> {
   return JSON.parse(await fs.readFile(file, 'utf-8'));
-}
-
-export function relativeUrl(from: URL, to: URL): string {
-  return relative(fileURLToPath(from), fileURLToPath(to));
 }
