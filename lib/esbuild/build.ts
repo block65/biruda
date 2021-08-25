@@ -5,19 +5,29 @@ import { dir } from 'tmp-promise';
 import type { TsConfigJson } from 'type-fest';
 import { fileURLToPath, URL } from 'url';
 import { logger as parentLogger } from '../logger.js';
-import type { BirudaBuildOptions } from '../types.js';
 import { readJsonFile } from '../utils.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
 const logger = parentLogger.child({ name: 'esbuild' });
 
-export async function build(options: BirudaBuildOptions): Promise<{
+interface EsBuildOptions {
+  entryPoints: Record<string, string>;
+  workingDirectory: URL;
+  sourceType?: 'esm' | 'cjs';
+  debug?: boolean;
+  externals?: (string | RegExp)[];
+  ignorePackages?: (string | RegExp)[];
+}
+
+export async function build(options: EsBuildOptions): Promise<{
   outputFiles: [entryPointName: string, fileName: string][];
   outputDir: string;
   // tsConfigJson: TsConfigJson;
   // packageJson: PackageJson;
   cleanup: () => Promise<void>;
 }> {
+  logger.trace(options, 'build options');
+
   const { entryPoints, workingDirectory } = options;
 
   // const packageJsonUrl = pathToFileURL(packageJsonPath);
@@ -61,12 +71,9 @@ export async function build(options: BirudaBuildOptions): Promise<{
 
   // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
-  const verboseLogging =
-    options.logLevel && ['trace', 'debug'].includes(options.logLevel);
-
   const finalEsBuildOptions: esbuild.BuildOptions = {
-    platform: options.platform === 'browser' ? 'browser' : 'node',
-    logLevel: verboseLogging ? 'info' : undefined,
+    platform: 'node',
+    logLevel: logger.levelVal < 30 ? 'info' : undefined,
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints,
     outdir: outputDir,

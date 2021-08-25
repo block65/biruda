@@ -6,25 +6,21 @@ import { archiveFiles } from './archive.js';
 import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
-import { BirudaBuildOptions, BirudaCliArguments } from './types.js';
-import {
-  dedupeArray,
-  getDependencyPathsFromModule,
-  relativeFileUrl,
-} from './utils.js';
+import { BirudaCliArguments, BirudaConfigFileProperties } from './types.js';
+import { getDependencyPathsFromModule, relativeFileUrl } from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
 
 type ConfigFileExports =
-  | BirudaCliArguments
+  | BirudaConfigFileProperties
   | ((
       cliArguments: BirudaCliArguments,
       manifest: PackageJson,
-    ) => BirudaCliArguments)
+    ) => BirudaConfigFileProperties)
   | ((
       cliArguments: BirudaCliArguments,
       manifest: PackageJson,
-    ) => Promise<BirudaCliArguments>);
+    ) => Promise<BirudaConfigFileProperties>);
 
 function parseEntryPoints(
   entryPoints?: string[] | Record<string, string> | string,
@@ -59,12 +55,14 @@ function parseEntryPoints(
 }
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const configPropsOrFunction: ConfigFileExports = cliArguments.config
+  const configPropsOrFunction: ConfigFileExports = cliArguments.configFile
     ? (
         await import(
           resolve(
-            cliArguments.config ? dirname(cliArguments.config) : process.cwd(),
-            cliArguments.config,
+            cliArguments.configFile
+              ? dirname(cliArguments.configFile)
+              : process.cwd(),
+            cliArguments.configFile,
           )
         )
       ).default
@@ -72,7 +70,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
   const workingDirectory = pathToFileURL(join(process.cwd(), '/'));
 
-  const config: BirudaCliArguments =
+  const configFileProps: BirudaConfigFileProperties =
     configPropsOrFunction instanceof Function
       ? await configPropsOrFunction(
           cliArguments,
@@ -80,34 +78,40 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         )
       : configPropsOrFunction;
 
-  const mergedEntryPoints = parseEntryPoints(config.entryPoints);
-
   const resolvedConfig = {
-    // default until we can reliably move to nodejs enable-source-maps
-    // which doesnt seem to work reliably right now (april 2021)
-    sourceMapSupport: true,
-    logLevel:
-      config.logLevel ||
-      (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
-    sourceType: config.sourceType || 'esm',
-    debug: config.debug || process.env.NODE_ENV === 'development',
-    ...config,
+    // defaults
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    sourceType: 'esm' as const,
+    debug: process.env.NODE_ENV === 'development',
+    archiveFormat: 'tar' as const,
+
+    // Primitive CLI options take precedence
+    ...configFileProps,
+    ...cliArguments,
+
+    // Non-primitives are merged
+    entryPoints: {
+      ...parseEntryPoints(configFileProps.entryPoints),
+      ...parseEntryPoints(cliArguments.entryPoints),
+    },
     extraModules: [
       ...(cliArguments.extraModules || []),
-      ...(config.extraModules || []),
+      ...(configFileProps.extraModules || []),
+      ...(configFileProps.sourceMapSupport || cliArguments.sourceMapSupport
+        ? ['source-map-support']
+        : []),
     ],
     extraPaths: [
       ...(cliArguments.extraPaths || []),
-      ...(config.extraPaths || []),
+      ...(configFileProps.extraPaths || []),
     ],
-    entryPoints: mergedEntryPoints,
-    archiveFormat: cliArguments.archiveFormat || config.archiveFormat || 'tar',
-    compressionLevel: cliArguments.compressionLevel ?? config.compressionLevel,
   };
 
   if (resolvedConfig.logLevel) {
     logger.level = resolvedConfig.logLevel;
   }
+
+  logger.fatal({ resolvedConfig, cliArguments, configFileProps });
 
   const { entryPoints } = resolvedConfig;
 
@@ -126,28 +130,14 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     recursive: true,
   });
 
-  const options: BirudaBuildOptions = {
-    platform: 'node',
-    ...resolvedConfig,
-    entryPoints,
-    outDir,
-    externals: dedupeArray([
-      ...(resolvedConfig.sourceMapSupport ? ['source-map-support'] : []),
-      ...(resolvedConfig.externals || []),
-    ]),
-    extraModules: dedupeArray([
-      ...(resolvedConfig.sourceMapSupport ? ['source-map-support'] : []),
-      ...(resolvedConfig.extraModules || []),
-    ]),
-    // forceBuild: resolvedConfig.forceBuild,
+  const { outputFiles, outputDir, cleanup } = await build({
     workingDirectory,
-  };
-
-  logger.trace({ options }, 'build options');
-
-  const { outputFiles, outputDir, cleanup } = await build(options);
-
-  const packageJson = await loadPackageJson(options.workingDirectory);
+    entryPoints: resolvedConfig.entryPoints,
+    externals: resolvedConfig.externals,
+    ignorePackages: resolvedConfig.ignorePackages,
+    sourceType: resolvedConfig.sourceType,
+    debug: resolvedConfig.debug,
+  });
 
   const workspaceRoot = await findWorkspaceRoot(workingDirectory);
 
@@ -166,7 +156,9 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     },
   );
 
-  if (resolvedConfig.extraModules.length > 0) {
+  logger.warn({ resolvedConfig }, 'resolvedConfig');
+
+  if (resolvedConfig.extraModules && resolvedConfig.extraModules.length > 0) {
     logger.info(
       resolvedConfig.extraModules,
       'Including %d modules',
@@ -177,22 +169,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   const extras = new Set<string>(resolvedConfig.extraPaths);
   const modulePaths = new Set<string>();
 
-  // should run serially due to path descending and caching
-  for await (const name of resolvedConfig.extraModules) {
-    // await serialPromiseForEach(resolvedConfig.extraModules, async (name) => {
-    // local path
-    if (name.startsWith('.') || name.startsWith('/')) {
-      const rel = relative(fileURLToPath(workspaceRoot), name);
-      logger.trace(
-        { name, workspaceRoot: workspaceRoot.toString() },
-        'force including file path %s',
-        rel,
-      );
-      extras.add(rel);
-      return;
-    }
+  // must run serially due to path descending and caching
+  for await (const name of resolvedConfig.extraModules || []) {
+    logger.trace('[%s] getting deps for extra module %s', name);
 
-    // default, assume module
     await getDependencyPathsFromModule(
       name,
       workingDirectory,
@@ -200,7 +180,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       function shouldDescend(modulePath, moduleName) {
         const include = !modulePaths.has(modulePath.toString());
         if (include) {
-          logger.trace('[%s] processing %s', moduleName, modulePath);
+          logger.trace('[%s] including %s', moduleName, modulePath);
           modulePaths.add(modulePath.toString());
         } else {
           logger.trace('[%s] ignoring %s', moduleName, modulePath);
@@ -229,12 +209,14 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     );
   }
 
+  const packageJson = await loadPackageJson(workingDirectory);
+
   const newPackageJson: PackageJson.PackageJsonStandard = {
     name: packageJson.name,
     version: packageJson.version,
     license: packageJson.license,
     private: packageJson.private,
-    ...(options.sourceType === 'esm' && { type: 'module' }),
+    ...(resolvedConfig.sourceType === 'esm' && { type: 'module' }),
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(
     //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {

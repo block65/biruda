@@ -19,7 +19,7 @@ yargs(hideBin(process.argv))
         choices: ['trace', 'debug', 'info'],
         description: 'Sets the logging level',
       })
-        .option('config', {
+        .option('configFile', {
           alias: ['c'],
           type: 'string',
           default: 'biruda.config.js',

@@ -1,9 +1,9 @@
 import findUp from 'find-up';
 import fs from 'fs/promises';
 import { createRequire } from 'module';
-import { isAbsolute, relative, resolve, join, dirname } from 'path';
+import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import pkgDir from 'pkg-dir';
-import type { AsyncReturnType, JsonValue, PackageJson } from 'type-fest';
+import type { AsyncReturnType, JsonValue } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { loadPackageJson } from './deps.js';
 import { logger as parentLogger } from './logger.js';
@@ -244,6 +244,7 @@ export async function getDependencyPathsFromModule(
     );
   });
 }
+
 // create a function that will definitely run at least once, every `delay` seconds
 
 export function basicThrottle<T extends (...args: any[]) => any>(
@@ -261,6 +262,7 @@ export function basicThrottle<T extends (...args: any[]) => any>(
     }
   };
 }
+
 // create a function that will run at least once `delay` seconds after the last call
 
 export function basicDebounce<T extends (...args: any[]) => any>(

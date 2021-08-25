@@ -3,7 +3,7 @@ import fs, { createWriteStream } from 'fs';
 import { access, lstat, realpath } from 'fs/promises';
 import glob from 'glob';
 import { dirname, join, relative } from 'path';
-import { fileURLToPath, pathToFileURL, URL } from 'url';
+import { fileURLToPath, URL } from 'url';
 import { constants } from 'zlib';
 import { logger as parentLogger } from './logger.js';
 import { basicThrottle, maybeMakeAbsolute } from './utils.js';
