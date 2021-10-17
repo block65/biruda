@@ -139,12 +139,12 @@ export async function traceFiles(
 
   logger.info(
     'Found %d files, %d esmFileList in trace',
-    fileList.length,
-    esmFileList.length,
+    fileList.size,
+    esmFileList.size,
   );
 
-  if (traceResult.warnings.length > 0) {
-    logger.warn('Trace warnings: %d', traceResult.warnings.length);
+  if (traceResult.warnings.size > 0) {
+    logger.warn('Trace warnings: %d', traceResult.warnings.size);
     traceResult.warnings.forEach((value: Warning) => {
       if (value.lineText) {
         logger.warn(

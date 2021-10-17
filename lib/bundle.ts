@@ -15,11 +15,11 @@ type ConfigFileExports =
   | BirudaConfigFileProperties
   | ((
       cliArguments: BirudaCliArguments,
-      manifest: PackageJson,
+      manifest: PackageJson | null,
     ) => BirudaConfigFileProperties)
   | ((
       cliArguments: BirudaCliArguments,
-      manifest: PackageJson,
+      manifest: PackageJson | null,
     ) => Promise<BirudaConfigFileProperties>);
 
 function parseEntryPoints(
@@ -210,10 +210,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   const packageJson = await loadPackageJson(workingDirectory);
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
-    name: packageJson.name,
-    version: packageJson.version,
-    license: packageJson.license,
-    private: packageJson.private,
+    name: packageJson?.name,
+    version: packageJson?.version,
+    license: packageJson?.license,
+    private: packageJson?.private,
     ...(resolvedConfig.sourceType === 'esm' && { type: 'module' }),
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(

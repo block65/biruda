@@ -1,8 +1,8 @@
-import findUp from 'find-up';
+import { findUp, pathExists } from 'find-up';
 import fs from 'fs/promises';
 import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import pkgDir from 'pkg-dir';
+import { packageDirectory } from 'pkg-dir';
 import type { AsyncReturnType, JsonValue } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { loadPackageJson } from './deps.js';
@@ -37,7 +37,11 @@ export async function resolveModuleRoot(
     require.resolve(from, {
       paths: initialPaths,
     });
-  const fromPkgDir = resolvedFrom && (await pkgDir(resolvedFrom));
+  const fromPkgDir =
+    resolvedFrom &&
+    (await packageDirectory({
+      cwd: resolvedFrom,
+    }));
 
   const paths = Array.from(
     new Set<string>([
@@ -74,7 +78,7 @@ export async function resolveModuleRoot(
     async (directory) => {
       const parent = join(directory, packageRhs);
       const maybeManifest = join(parent, 'package.json');
-      const found = await findUp.exists(maybeManifest);
+      const found = await pathExists(maybeManifest);
       logger.trace({ directory, maybeManifest, found });
       return found ? parent : undefined;
     },
