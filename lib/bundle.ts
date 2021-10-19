@@ -145,6 +145,10 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     outputFiles.map(([, fileName]) => fileName),
     {
       workspaceRoot,
+      ignorePaths: [
+        relative(fileURLToPath(workspaceRoot), outputDir),
+        // ...outputFiles.map(([, fileName]) => fileName),
+      ],
       ignorePackages: [
         // don't need to trace extraModules, because we will always add everything
         // ...(resolvedConfig.extraModules || []),
