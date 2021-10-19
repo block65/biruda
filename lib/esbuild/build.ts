@@ -64,8 +64,6 @@ export async function build(options: EsBuildOptions): Promise<{
     'node:*', // always skip over internal node modules
     ...(options.ignorePackages || []),
     ...(options.externals || []),
-    // really doesnt play nice with biruda (uses mjs) needs investigation, it might be fixable
-    // ...['decimal.js'],
   ];
 
   // logger.debug({ externals }, 'Resolved externals');
