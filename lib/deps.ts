@@ -115,24 +115,32 @@ export async function traceFiles(
     workspaceRoot?: URL;
     // workingDirectory?: URL;
     ignorePackages?: string[];
+    ignorePaths?: string[];
   },
 ): Promise<{
   files: Set<string>;
   reasons: NodeFileTraceReasons;
 }> {
-  logger.info('Tracing %d entrypoints...', entryPoints.length);
+  const base = options.workspaceRoot && fileURLToPath(options.workspaceRoot);
+
+  const opts = {
+    // needed in monorepo situations, as nft won't include files above this dir
+    base,
+    // processCwd:
+    //   options.workingDirectory && fileURLToPath(options.workingDirectory),
+    log: logger.levelVal < 30,
+    ignore: [
+      ...(options.ignorePackages || []).map((pkg) => `node_modules/${pkg}/**`),
+      ...(options.ignorePaths || []).map((path) => `${path}/**`),
+    ],
+    exportsOnly: true,
+  };
+
+  logger.info(opts, 'Tracing %d entrypoints...', entryPoints.length);
 
   const traceResult = await nodeFileTrace(
     entryPoints, // .map((entry) => fileURLToPath(new URL(entry, baseDir))),
-    {
-      // needed in monorepo situations, as nft wont include files above this dir
-      base: options.workspaceRoot && fileURLToPath(options.workspaceRoot),
-      // processCwd:
-      //   options.workingDirectory && fileURLToPath(options.workingDirectory),
-      log: logger.levelVal < 30,
-      ignore: options.ignorePackages?.map((pkg) => `node_modules/${pkg}/**`),
-      exportsOnly: true,
-    },
+    opts,
   );
 
   const { fileList, esmFileList, reasons } = traceResult;
