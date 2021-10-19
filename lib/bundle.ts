@@ -149,6 +149,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
         // dont need to trace extraModules, because we will always add everything
         // ...(resolvedConfig.extraModules || []),
         ...(resolvedConfig.ignorePackages || []),
+        'node:*',
         // .filter(
         //   (pkg): pkg is string => typeof pkg === 'string',
         // ),

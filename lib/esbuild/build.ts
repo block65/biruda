@@ -61,6 +61,7 @@ export async function build(options: EsBuildOptions): Promise<{
   process.on('exit', clean);
 
   const externals: (string | RegExp)[] = [
+    'node:*', // always skip over internal node modules
     ...(options.ignorePackages || []),
     ...(options.externals || []),
     // really doesnt play nice with biruda (uses mjs) needs investigation, it might be fixable
