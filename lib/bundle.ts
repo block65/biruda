@@ -111,7 +111,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     logger.level = resolvedConfig.logLevel;
   }
 
-  logger.trace({ resolvedConfig, cliArguments, configFileProps });
+  // logger.trace({ resolvedConfig, cliArguments, configFileProps });
 
   const { entryPoints } = resolvedConfig;
 
@@ -125,7 +125,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     throw new TypeError('No outDir');
   }
 
-  // archiver finalize() exits without error if the outDir doesnt exist
+  // archiver finalize() exits without error if the outDir doesn't exist
   await mkdir(outDir, {
     recursive: true,
   });
@@ -146,7 +146,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     {
       workspaceRoot,
       ignorePackages: [
-        // dont need to trace extraModules, because we will always add everything
+        // don't need to trace extraModules, because we will always add everything
         // ...(resolvedConfig.extraModules || []),
         ...(resolvedConfig.ignorePackages || []),
         'node:*',
