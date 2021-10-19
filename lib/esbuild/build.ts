@@ -102,7 +102,9 @@ export async function build(options: EsBuildOptions): Promise<{
     // errorLimit: 1,
   };
 
-  logger.debug(finalEsBuildOptions, 'Building with esbuild...');
+  logger.trace(finalEsBuildOptions, 'finalEsBuildOptions');
+
+  logger.debug('Building with esbuild...');
 
   const buildResult = await esbuild.build(finalEsBuildOptions);
 
