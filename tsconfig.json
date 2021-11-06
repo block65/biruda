@@ -11,6 +11,6 @@
     "removeComments": true,
     "esModuleInterop": true
   },
-  "include": ["./lib", "./bin", "./__tests__"],
+  "include": ["./lib", "./bin"],
   "exclude": ["dist", "node_modules", "tmp"]
 }

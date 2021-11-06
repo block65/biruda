@@ -15,9 +15,10 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:clean": "rimraf dist/*",
     "build:watch": "yarn build -w",
-    "prepare": "yarn build:clean && yarn build && chmod +x dist/bin/*.js",
+    "clean": "rimraf dist tnmp",
+    "distclean": "yarn clean; yarn rimraf node_modules",
+    "prepare": "yarn clean && yarn build && chmod +x dist/bin/*.js",
     "test": "NODE_OPTIONS=\"--experimental-vm-modules\" ava"
   },
   "dependencies": {
