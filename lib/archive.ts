@@ -33,12 +33,12 @@ export async function archiveFiles({
   workspaceRoot: URL;
   bundleSource: string;
   bundleDest: string;
-  outDir: string;
+  outDir: URL;
   files: Set<string>;
   extras: Set<string>;
   format: 'zip' | 'tar';
   compressionLevel?: number;
-}) {
+}): Promise<{ bytesWritten: number; path: URL }> {
   logger.info(
     { compressionLevel },
     `Archiving approx %d files and %d extras...`,
@@ -61,7 +61,8 @@ export async function archiveFiles({
     statConcurrency: 1, // guaranteed order,
   });
 
-  // good practice to catch warnings (ie stat failures and other non-blocking errors)
+  // it's good practise to catch warnings (ie stat failures and
+  // other non-blocking errors)
   archive.on('warning', (err) => {
     if (err.code === 'ENOENT') {
       logger.warn(/* { err }, */ `Archiver warning: ${err.message}`);
@@ -71,7 +72,7 @@ export async function archiveFiles({
     }
   });
 
-  // good practice to catch this error explicitly
+  // good practise to catch this error explicitly
   archive.on('error', (err) => {
     logger.error(err, `Archiver error: ${err.message}`);
     archive.abort();
@@ -93,7 +94,9 @@ export async function archiveFiles({
   const archiveFileName = `pkg.${format}${
     isTar && compressionLevel > 0 ? '.gz' : ''
   }`;
-  const output = createWriteStream(`${outDir}/${archiveFileName}`);
+  logger.warn({ outDir }, 'outDiroutDiroutDiroutDir');
+  const archivePath = new URL(archiveFileName, outDir);
+  const output = createWriteStream(archivePath);
 
   // listen for all archive data to be written
   // 'close' event is fired only when a file descriptor is involved
@@ -107,13 +110,6 @@ export async function archiveFiles({
     );
   });
 
-  // This event is fired when the data source is drained no matter what was the data source.
-  // It is not part of this library but rather from the NodeJS Stream API.
-  // @see: https://nodejs.org/api/stream.html#stream_event_end
-  output.on('end', () => {
-    logger.trace('Data has been drained');
-  });
-
   // let entryCount = 0;
   // archive.on('entry', (entry) => {
   //   entryCount += 1;
@@ -122,6 +118,8 @@ export async function archiveFiles({
 
   // pipe archive data to the output
   archive.pipe(output);
+
+  archive.on('entry', () => {});
 
   logger.trace('Archiving pkgDir %s into %s', bundleSource, bundleDest);
   archive.directory(bundleSource, bundleDest);
@@ -162,7 +160,7 @@ export async function archiveFiles({
         // }
 
         logger.debug('Archiving %s (using dir)', path);
-        archive.directory(absolutePath, path /* , prefix */);
+        archive.directory(absolutePath, path /* , prefix */, {});
       } else if (stats.isFile()) {
         // const prefix = maybeReducePathToNodeModules(absolutePath, file);
         // const prefix = `node_modules/${name}`;
@@ -245,6 +243,12 @@ export async function archiveFiles({
     }
   }
 
-  logger.trace('Finalizing archive');
-  return archive.finalize();
+  await new Promise(async (resolve) => {
+    logger.trace('Finalizing archive');
+    await archive.finalize();
+
+    output.on('close', resolve);
+  });
+
+  return { bytesWritten: archive.pointer(), path: archivePath };
 }

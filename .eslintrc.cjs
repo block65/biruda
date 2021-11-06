@@ -5,11 +5,9 @@ module.exports = {
     node: true,
   },
   parserOptions: {
+    tsconfigRootDir: __dirname,
     project: [
       './tsconfig.json',
-      './__tests__/tsconfig.json',
-      './__tests__/fixtures/fixture1/tsconfig.json',
-      './__tests__/fixtures/fixture2/tsconfig.json',
     ],
   },
 };

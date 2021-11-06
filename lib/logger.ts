@@ -1,64 +1,8 @@
-import { createLogger, Logger } from '@block65/logger';
-import chalk from 'chalk';
-import * as util from 'util';
+import { createCliLogger } from '@block65/logger';
 
-interface LogDescriptor {
-  level: number;
-  msg?: string;
-  name?: string | undefined;
-  time: number;
-  pid: number;
-  hostname: string;
-
-  [key: string]: unknown;
-}
-
-function formatLevel(level: number) {
-  switch (level) {
-    case 60: //fatal
-      return chalk.whiteBright.bgRed.bold('FATAL');
-    case 50: //error
-      return chalk.red('ERROR');
-    case 40: // warn
-      return chalk.bgYellow.black.bold('WARN');
-    case 30: //info
-      return chalk.blue('INFO');
-    case 20: //debug
-      return chalk.green('DEBUG');
-    case 10: //trace
-      return chalk.gray('TRACE');
-  }
-}
-
-export const logger = createLogger({
+export const logger = createCliLogger({
   level: 'trace',
-  prettyPrint: {},
-  prettifier(thisArg: Logger, options: unknown) {
-    return (log: LogDescriptor) => {
-      const { level, msg = '', time, name, hostname, pid, ...rest } = log;
-
-      if (msg?.startsWith('pino.final with prettyPrint')) {
-        return '';
-      }
-
-      const formattedName = name ? `(${name})` : '';
-      const formattedMsg = msg && ' ' + chalk.whiteBright(msg);
-
-      const formattedRest =
-        Object.keys(rest).length > 0
-          ? ' ' +
-            util.inspect(rest, {
-              colors: true,
-              compact: true,
-              sorted: true,
-            })
-          : '';
-
-      return `${formatLevel(level)}${formattedName}: ${chalk.gray(
-        new Date(time).toJSON(),
-      )}${formattedMsg}${formattedRest}\n`;
-    };
-  },
+  // pretty: true,
 });
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {

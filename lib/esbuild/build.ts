@@ -71,6 +71,7 @@ export async function build(options: EsBuildOptions): Promise<{
   // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
 
   const finalEsBuildOptions: esbuild.BuildOptions = {
+    absWorkingDir: fileURLToPath(workingDirectory),
     platform: 'node',
     logLevel: logger.levelVal < 30 ? 'info' : undefined,
     external: externals.filter((ext): ext is string => typeof ext === 'string'),

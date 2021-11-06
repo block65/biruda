@@ -6,7 +6,11 @@ import { archiveFiles } from './archive.js';
 import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
-import { BirudaCliArguments, BirudaConfigFileProperties } from './types.js';
+import {
+  BirudaCliArguments,
+  BirudaConfigFileProperties,
+  BirudaOptions,
+} from './types.js';
 import { getDependencyPathsFromModule, relativeFileUrl } from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
@@ -54,26 +58,26 @@ function parseEntryPoints(
   return entryPoints || {};
 }
 
-export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const configPropsOrFunction: ConfigFileExports = cliArguments.configFile
-    ? (
-        await import(
-          resolve(
-            cliArguments.configFile
-              ? dirname(cliArguments.configFile)
-              : process.cwd(),
-            cliArguments.configFile,
-          )
-        )
-      ).default
+export async function bundle(options: BirudaOptions) {
+  const configFileLocation =
+    options.configFile &&
+    resolve(
+      options.configFile ? dirname(options.configFile) : process.cwd(),
+      options.configFile,
+    );
+
+  const configPropsOrFunction: ConfigFileExports = configFileLocation
+    ? (await import(configFileLocation)).default
     : {};
 
-  const workingDirectory = pathToFileURL(join(process.cwd(), '/'));
+  const workingDirectory = configFileLocation
+    ? pathToFileURL(join(dirname(configFileLocation), '/'))
+    : pathToFileURL(join(process.cwd(), '/'));
 
   const configFileProps: BirudaConfigFileProperties =
     configPropsOrFunction instanceof Function
       ? await configPropsOrFunction(
-          cliArguments,
+          options,
           await loadPackageJson(workingDirectory),
         )
       : configPropsOrFunction;
@@ -87,22 +91,22 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
 
     // Primitive CLI options take precedence
     ...configFileProps,
-    ...cliArguments,
+    ...options,
 
     // Non-primitives are merged
     entryPoints: {
       ...parseEntryPoints(configFileProps.entryPoints),
-      ...parseEntryPoints(cliArguments.entryPoints),
+      ...parseEntryPoints(options.entryPoints),
     },
     extraModules: [
-      ...(cliArguments.extraModules || []),
+      ...(options.extraModules || []),
       ...(configFileProps.extraModules || []),
-      ...(configFileProps.sourceMapSupport || cliArguments.sourceMapSupport
+      ...(configFileProps.sourceMapSupport || options.sourceMapSupport
         ? ['source-map-support']
         : []),
     ],
     extraPaths: [
-      ...(cliArguments.extraPaths || []),
+      ...(options.extraPaths || []),
       ...(configFileProps.extraPaths || []),
     ],
   };
@@ -119,11 +123,11 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     throw new TypeError('No entryPoints provided');
   }
 
-  const outDir = resolvedConfig.outDir;
-
-  if (!outDir) {
+  if (!resolvedConfig.outDir) {
     throw new TypeError('No outDir');
   }
+
+  const outDir = new URL(`${resolvedConfig.outDir}/`, workingDirectory);
 
   // archiver finalize() exits without error if the outDir doesn't exist
   await mkdir(outDir, {
@@ -148,12 +152,12 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
       ignorePaths: [
         relative(fileURLToPath(workspaceRoot), outputDir),
         // ...outputFiles.map(([, fileName]) => fileName),
+        'node:*',
       ],
       ignorePackages: [
         // don't need to trace extraModules, because we will always add everything
         // ...(resolvedConfig.extraModules || []),
         ...(resolvedConfig.ignorePackages || []),
-        'node:*',
         // .filter(
         //   (pkg): pkg is string => typeof pkg === 'string',
         // ),
@@ -244,9 +248,11 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     JSON.stringify(newPackageJson, null, 2),
   );
 
-  await archiveFiles({
+  const bundleSource = outputDir;
+
+  const archiveResult = await archiveFiles({
     workspaceRoot,
-    bundleSource: outputDir,
+    bundleSource,
     bundleDest: relative(
       fileURLToPath(workspaceRoot),
       fileURLToPath(workingDirectory),
@@ -258,6 +264,22 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     compressionLevel: resolvedConfig.compressionLevel,
   });
 
-  logger.info(`Done. Files are at %s`, pathToFileURL(outDir));
   await cleanup().catch((err) => logger.warn(err.message));
+
+  return {
+    outDir,
+    bundleSource,
+    entries: new Set([...files, ...extras]),
+    archiveResult,
+  };
+}
+
+export async function cliBundle(cliArguments: BirudaCliArguments) {
+  const { outDir, archiveResult } = await bundle(cliArguments);
+
+  logger.info(
+    `Done. Output is at %s (%d bytes)`,
+    outDir,
+    archiveResult.bytesWritten,
+  );
 }

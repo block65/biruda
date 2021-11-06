@@ -14,6 +14,8 @@ export interface BirudaCliArguments {
   ignorePackages?: string[];
 }
 
+export type BirudaOptions = BirudaCliArguments;
+
 export interface BirudaConfigFileProperties
   extends Omit<BirudaCliArguments, 'configFile' | 'entryPoints'> {
   entryPoints?: string[] | Record<string, string>;
