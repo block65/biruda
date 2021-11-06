@@ -1,6 +1,7 @@
-/** @const {BirudaConfigFileProperties} */
-module.exports = {
+/** @type {BirudaConfigFileProperties} */
+const config = {
   entryPoints: ['src/index.ts'],
-  external: [],
-  outfile: 'out/index.js',
+  outDir: '/tmp/tmp.biruda.fixture1',
 };
+
+module.exports = config;
