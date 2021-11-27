@@ -72,7 +72,21 @@ yargs(hideBin(process.argv))
         });
     },
     (argv) => {
-      cliBundle(argv).catch((err) => {
+      cliBundle({
+        externals: argv.externals,
+        debug: argv.debug,
+        archiveFormat: argv.archiveFormat,
+        compressionLevel: argv.compressionLevel,
+        configFile: argv.configFile,
+        entryPoints: argv.entryPoints,
+        extraModules: argv.extraModules,
+        extraPaths: argv.extraPaths,
+        ignorePackages: argv.ignorePackages,
+        logLevel: argv.logLevel,
+        outDir: argv.outDir,
+        sourceMapSupport: argv.sourceMapSupport,
+        sourceType: argv.sourceType,
+      }).catch((err) => {
         logger.fatal(err);
         process.exitCode = 1;
       });

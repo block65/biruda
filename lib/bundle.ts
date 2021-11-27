@@ -275,7 +275,12 @@ export async function bundle(options: BirudaOptions) {
 }
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const { outDir, archiveResult } = await bundle(cliArguments);
+  const { outDir, archiveResult } = await bundle(
+    // remove undefined props
+    Object.fromEntries(
+      Object.entries(cliArguments).filter(([, v]) => v !== undefined),
+    ),
+  );
 
   logger.info(
     `Done. Output is at %s (%d bytes)`,

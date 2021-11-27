@@ -94,7 +94,6 @@ export async function archiveFiles({
   const archiveFileName = `pkg.${format}${
     isTar && compressionLevel > 0 ? '.gz' : ''
   }`;
-  logger.warn({ outDir }, 'outDiroutDiroutDiroutDir');
   const archivePath = new URL(archiveFileName, outDir);
   const output = createWriteStream(archivePath);
 

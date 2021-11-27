@@ -6,7 +6,9 @@ import type { TsConfigJson } from 'type-fest';
 import { fileURLToPath, URL } from 'url';
 import { logger as parentLogger } from '../logger.js';
 import { readJsonFile } from '../utils.js';
-import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
+import { externalEverything } from './esbuild-plugin-external-everything.js';
+// import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
+import { stripNodePrefixPlugin } from './esbuild-plugin-strip-node-prefix.js';
 
 const logger = parentLogger.child({ name: 'esbuild' });
 
@@ -77,28 +79,28 @@ export async function build(options: EsBuildOptions): Promise<{
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints,
     outdir: outputDir,
-    bundle: true,
+    bundle: true, // dont bundle breaks signed-urls
     minify: !options.debug,
     treeShaking: true,
     color: true,
     target: tsConfigJson.compilerOptions?.target,
     sourcemap: 'external',
     sourcesContent: false, // unlikely to attach a debugger in production node
-    format: 'esm' || options.sourceType,
+    format: options.sourceType || 'esm',
     write: false,
     define: {
       NODE_ENV: 'production',
     },
     plugins: [
-      externalsRegExpPlugin({
-        externals: externals.filter(
-          (ext): ext is RegExp => ext instanceof RegExp,
-        ),
-      }),
+      externalEverything(),
+      stripNodePrefixPlugin(),
+      // externalsRegExpPlugin({
+      //   externals: externals.filter(
+      //     (ext): ext is RegExp => ext instanceof RegExp,
+      //   ),
+      // }),
     ],
     // metafile: '/tmp/meta.json',
-    // absWorkingDir: dirname(entryPoint),
-    // errorLimit: 1,
   };
 
   logger.trace(finalEsBuildOptions, 'finalEsBuildOptions');

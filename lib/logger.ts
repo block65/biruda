@@ -1,7 +1,7 @@
 import { createCliLogger } from '@block65/logger';
 
 export const logger = createCliLogger({
-  level: 'trace',
+  level: 'info',
   // pretty: true,
 });
 
