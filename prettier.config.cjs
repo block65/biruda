@@ -1,1 +1,1 @@
-module.exports = '@block65/eslint-config/prettier.config';
+module.exports = '@block65/eslint-config/prettier.config.js';
