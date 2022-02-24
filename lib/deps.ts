@@ -136,7 +136,7 @@ export async function traceFiles(
     exportsOnly: true,
   };
 
-  logger.info(opts, 'Tracing %d entrypoints...', entryPoints.length);
+  logger.debug(opts, 'Tracing %d entrypoints...', entryPoints.length);
 
   const traceResult = await nodeFileTrace(
     entryPoints, // .map((entry) => fileURLToPath(new URL(entry, baseDir))),
@@ -152,15 +152,23 @@ export async function traceFiles(
   );
 
   if (traceResult.warnings.size > 0) {
-    logger.warn('Trace warnings: %d', traceResult.warnings.size);
+    // logger.warn('Trace warnings: %d', traceResult.warnings.size);
     traceResult.warnings.forEach((value: Warning) => {
       if (value.lineText) {
         logger.warn(
           { value },
-          `${value.message.trim()} caused by ${value.lineText} in ${
-            value.file
-          }:${value.line}:${value.column}`,
+          `%s caused by %s in %s:%d:%d`,
+          value.message.trim(),
+          value.lineText,
+          value.file,
+          value.line,
+          value.column,
         );
+      } else if (
+        value.message.startsWith('Failed to resolve dependency node:')
+      ) {
+        // dont warn about node: prefixes
+        logger.trace(value.message.trim());
       } else {
         logger.warn(value.message.trim());
       }
