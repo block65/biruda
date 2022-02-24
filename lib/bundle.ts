@@ -177,6 +177,7 @@ export async function bundle(options: BirudaOptions) {
   const modulePaths = new Set<string>();
 
   // must run serially due to path descending and caching
+  // eslint-disable-next-line no-restricted-syntax
   for await (const name of resolvedConfig.extraModules || []) {
     logger.trace('[%s] getting deps for extra module %s', name);
 
@@ -283,7 +284,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   );
 
   logger.info(
-    `Done. Output is at %s (%d bytes)`,
+    `Done. Output at %s (%d bytes)`,
     outDir,
     archiveResult.bytesWritten,
   );
