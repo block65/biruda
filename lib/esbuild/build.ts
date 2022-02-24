@@ -117,7 +117,7 @@ export async function build(options: EsBuildOptions): Promise<{
       //   ),
       // }),
     ],
-    // metafile: '/tmp/meta.json',
+    metafile: options.debug,
   };
 
   logger.trace(finalEsBuildOptions, 'finalEsBuildOptions');
@@ -176,6 +176,16 @@ export async function build(options: EsBuildOptions): Promise<{
       },
     ),
   );
+
+  if (buildResult.metafile) {
+    await writeFile(
+      join(outputDir, 'meta.json'),
+      JSON.stringify(buildResult.metafile, null, 2),
+      {
+        encoding: 'utf-8',
+      },
+    );
+  }
 
   logger.info(`Build completed. Output is in ${outputDir}`);
 
