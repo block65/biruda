@@ -39,6 +39,9 @@
     "tmp-promise": "^3.0.3",
     "yargs": "^17.3.1"
   },
+  "peerDependencies": {
+    "typescript": ">=4.5"
+  },
   "devDependencies": {
     "@block65/eslint-config": "^7.0.4",
     "@jest/globals": "^27.5.1",
