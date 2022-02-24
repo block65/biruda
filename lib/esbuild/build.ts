@@ -88,7 +88,7 @@ export async function build(options: EsBuildOptions): Promise<{
         ]
       : undefined
     )?.toLocaleLowerCase(),
-    sourcemap: 'external',
+    sourcemap: true,
     sourcesContent: false, // unlikely to attach a debugger in production node
     format: options.sourceType || 'esm',
     write: false,
