@@ -36,12 +36,24 @@ export async function build(options: EsBuildOptions): Promise<{
 
   // const packageJson = await readManifest(packageJsonUrl);
 
-  const tsConfigJson = await readJsonFile<TsConfigJson>(
-    new URL('./tsconfig.json', workingDirectory),
-  ).catch((err): TsConfigJson => {
-    logger.warn({ workingDirectory, err }, err.message);
-    return {};
-  });
+  const tsConfigFile = ts.findConfigFile(
+    fileURLToPath(workingDirectory),
+    ts.sys.fileExists,
+    'tsconfig.json',
+  );
+
+  if (!tsConfigFile) {
+    throw new Error(
+      `'Unable to locate tsconfig.json from ${workingDirectory}'`,
+    );
+  }
+
+  const tsConfig = ts.readConfigFile(tsConfigFile, ts.sys.readFile);
+  const compilerOptions = ts.parseJsonConfigFileContent(
+    tsConfig.config,
+    ts.sys,
+    fileURLToPath(workingDirectory),
+  );
 
   await mkdir(new URL('./tmp', workingDirectory), {
     recursive: true,
@@ -83,7 +95,12 @@ export async function build(options: EsBuildOptions): Promise<{
     minify: !options.debug,
     treeShaking: true,
     color: true,
-    target: tsConfigJson.compilerOptions?.target,
+    target: (compilerOptions.options.target
+      ? Object.keys(ts.ScriptTarget)[
+          Object.values(ts.ScriptTarget).indexOf(compilerOptions.options.target)
+        ]
+      : undefined
+    )?.toLocaleLowerCase(),
     sourcemap: 'external',
     sourcesContent: false, // unlikely to attach a debugger in production node
     format: options.sourceType || 'esm',
