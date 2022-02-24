@@ -109,6 +109,10 @@ export async function build(options: EsBuildOptions): Promise<{
     define: {
       NODE_ENV: 'production',
     },
+    banner: {
+      // WARN: the variable here is not considered for minification and can conflict
+      js: 'import { createRequire as __birudaTopLevelCreateRequire } from "module";\n const require = __birudaTopLevelCreateRequire(import.meta.url);',
+    },
     plugins: [
       externalEverything(),
       stripNodePrefixPlugin(),
