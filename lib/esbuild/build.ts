@@ -105,6 +105,7 @@ export async function build(options: EsBuildOptions): Promise<{
     sourcesContent: false, // unlikely to attach a debugger in production node
     format: options.sourceType || 'esm',
     write: false,
+    legalComments: 'none',
     define: {
       NODE_ENV: 'production',
     },
