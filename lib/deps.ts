@@ -1,4 +1,8 @@
-import { nodeFileTrace, NodeFileTraceReasons } from '@vercel/nft';
+import {
+  nodeFileTrace,
+  NodeFileTraceOptions,
+  NodeFileTraceReasons,
+} from '@vercel/nft';
 import * as fs from 'fs';
 import { access, readFile } from 'fs/promises';
 import micromatch from 'micromatch';
@@ -123,7 +127,7 @@ export async function traceFiles(
 }> {
   const base = options.workspaceRoot && fileURLToPath(options.workspaceRoot);
 
-  const opts = {
+  const opts: NodeFileTraceOptions = {
     // needed in monorepo situations, as nft won't include files above this dir
     base,
     // processCwd:
