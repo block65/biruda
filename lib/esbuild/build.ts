@@ -2,13 +2,10 @@ import * as esbuild from 'esbuild';
 import { mkdir, writeFile } from 'fs/promises';
 import { basename, dirname, join } from 'path';
 import { dir } from 'tmp-promise';
-import type { TsConfigJson } from 'type-fest';
+import ts from 'typescript';
 import { fileURLToPath, URL } from 'url';
 import { logger as parentLogger } from '../logger.js';
-import { readJsonFile } from '../utils.js';
-import { externalEverything } from './esbuild-plugin-external-everything.js';
-// import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
-import { stripNodePrefixPlugin } from './esbuild-plugin-strip-node-prefix.js';
+import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
 const logger = parentLogger.child({ name: 'esbuild' });
 
@@ -24,17 +21,11 @@ interface EsBuildOptions {
 export async function build(options: EsBuildOptions): Promise<{
   outputFiles: [entryPointName: string, fileName: string][];
   outputDir: string;
-  // tsConfigJson: TsConfigJson;
-  // packageJson: PackageJson;
   cleanup: () => Promise<void>;
 }> {
   logger.trace(options, 'build options');
 
   const { entryPoints, workingDirectory } = options;
-
-  // const packageJsonUrl = pathToFileURL(packageJsonPath);
-
-  // const packageJson = await readManifest(packageJsonUrl);
 
   const tsConfigFile = ts.findConfigFile(
     fileURLToPath(workingDirectory),
@@ -80,10 +71,6 @@ export async function build(options: EsBuildOptions): Promise<{
     ...(options.externals || []),
   ];
 
-  // logger.debug({ externals }, 'Resolved externals');
-
-  // const esBuildOutputFilePath = resolve(tmpDir, 'index.js');
-
   const finalEsBuildOptions: esbuild.BuildOptions = {
     absWorkingDir: fileURLToPath(workingDirectory),
     platform: 'node',
@@ -114,18 +101,16 @@ export async function build(options: EsBuildOptions): Promise<{
       js: 'import { createRequire as __birudaTopLevelCreateRequire } from "module";\n const require = __birudaTopLevelCreateRequire(import.meta.url);',
     },
     plugins: [
-      externalEverything(),
-      stripNodePrefixPlugin(),
-      // externalsRegExpPlugin({
-      //   externals: externals.filter(
-      //     (ext): ext is RegExp => ext instanceof RegExp,
-      //   ),
-      // }),
+      externalsRegExpPlugin({
+        externals: externals.filter(
+          (ext): ext is RegExp => ext instanceof RegExp,
+        ),
+      }),
     ],
     metafile: options.debug,
   };
-
-  logger.trace(finalEsBuildOptions, 'finalEsBuildOptions');
+  logger.debug(tsConfig, 'tsconfig parsed');
+  logger.debug(finalEsBuildOptions, 'esbuild options');
 
   logger.debug('Building with esbuild...');
 
