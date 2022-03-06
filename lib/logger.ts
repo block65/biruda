@@ -1,8 +1,8 @@
-import { createCliLogger } from '@block65/logger';
+import { createLogger } from '@block65/logger';
 
-export const logger = createCliLogger({
+export const logger = createLogger({
   level: 'info',
-  // pretty: true,
+  prettyOptions: true,
 });
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {
