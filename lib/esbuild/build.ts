@@ -16,11 +16,12 @@ interface EsBuildOptions {
   debug?: boolean;
   externals?: (string | RegExp)[];
   ignorePackages?: (string | RegExp)[];
+  define?: Record<string, string>;
 }
 
 export async function build(options: EsBuildOptions): Promise<{
   outputFiles: [entryPointName: string, fileName: string][];
-  outputDir: string;
+  buildDir: string;
   cleanup: () => Promise<void>;
 }> {
   logger.trace(options, 'build options');
@@ -53,14 +54,15 @@ export async function build(options: EsBuildOptions): Promise<{
   // we need to perform the process inside this directory
   // so we create a tmp file before we move the resulting bundle
   // back out to where the user wanted
-  const { path: outputDir, cleanup } = await dir({
+  const { path: buildDir, cleanup } = await dir({
     tmpdir: fileURLToPath(workingDirectory),
     dir: './tmp',
     prefix: 'biruda',
+    postfix: '/',
     unsafeCleanup: true,
   });
 
-  const clean = () => cleanup().catch((err) => console.warn(err));
+  const clean = () => cleanup().catch((err) => logger.warn(err));
 
   process.on('beforeExit', clean);
   process.on('exit', clean);
@@ -77,7 +79,7 @@ export async function build(options: EsBuildOptions): Promise<{
     logLevel: logger.levelVal < 30 ? 'info' : undefined,
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints,
-    outdir: outputDir,
+    outdir: buildDir,
     bundle: true, // dont bundle breaks signed-urls
     minify: !options.debug,
     treeShaking: true,
@@ -93,9 +95,7 @@ export async function build(options: EsBuildOptions): Promise<{
     format: options.sourceType || 'esm',
     write: false,
     legalComments: 'none',
-    define: {
-      NODE_ENV: 'production',
-    },
+    define: options.define,
     banner: {
       // WARN: the variable here is not considered for minification and can conflict
       js: 'import { createRequire as __birudaTopLevelCreateRequire } from "module";\n const require = __birudaTopLevelCreateRequire(import.meta.url);',
@@ -112,7 +112,7 @@ export async function build(options: EsBuildOptions): Promise<{
   logger.debug(tsConfig, 'tsconfig parsed');
   logger.debug(finalEsBuildOptions, 'esbuild options');
 
-  logger.debug('Building with esbuild...');
+  logger.info('Building...');
 
   const buildResult = await esbuild.build(finalEsBuildOptions);
 
@@ -151,9 +151,8 @@ export async function build(options: EsBuildOptions): Promise<{
           throw new Error('Cant find matching entry point for build output ');
         }
 
-        const fileName = `${join(outputDir, entryPointName)}.${exts.join('.')}`;
+        const fileName = `${join(buildDir, entryPointName)}.${exts.join('.')}`;
 
-        // archiver finalize() exits without error if the outDir doesnt exist
         await mkdir(dirname(fileName), {
           recursive: true,
         });
@@ -169,7 +168,7 @@ export async function build(options: EsBuildOptions): Promise<{
 
   if (buildResult.metafile) {
     await writeFile(
-      join(outputDir, 'meta.json'),
+      join(buildDir, 'meta.json'),
       JSON.stringify(buildResult.metafile, null, 2),
       {
         encoding: 'utf-8',
@@ -177,13 +176,14 @@ export async function build(options: EsBuildOptions): Promise<{
     );
   }
 
-  logger.info(`Build completed. Output is in ${outputDir}`);
+  logger.info(`Build completed`);
+  logger.debug(`Output is in ${buildDir}`);
 
   return {
     outputFiles: outputFiles.filter(
       ([, fileName]) => !fileName.endsWith('.map'),
     ),
-    outputDir,
+    buildDir,
     cleanup,
   };
 }

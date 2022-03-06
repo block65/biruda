@@ -1,8 +1,7 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { copyFile, cp, mkdir, writeFile } from 'fs/promises';
 import { basename, dirname, extname, join, relative, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
-import { archiveFiles } from './archive.js';
 import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
@@ -11,7 +10,11 @@ import {
   BirudaConfigFileProperties,
   BirudaOptions,
 } from './types.js';
-import { getDependencyPathsFromModule, relativeFileUrl } from './utils.js';
+import {
+  dirSize,
+  getDependencyPathsFromModule,
+  relativeFileUrl,
+} from './utils.js';
 
 const logger = parentLogger.child({ name: 'bundle' });
 
@@ -87,7 +90,6 @@ export async function bundle(options: BirudaOptions) {
     logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
     sourceType: 'esm' as const,
     debug: process.env.NODE_ENV === 'development',
-    archiveFormat: 'tar' as const,
 
     // Primitive CLI options take precedence
     ...configFileProps,
@@ -101,9 +103,6 @@ export async function bundle(options: BirudaOptions) {
     extraModules: [
       ...(options.extraModules || []),
       ...(configFileProps.extraModules || []),
-      ...(configFileProps.sourceMapSupport || options.sourceMapSupport
-        ? ['source-map-support']
-        : []),
     ],
     extraPaths: [
       ...(options.extraPaths || []),
@@ -129,18 +128,19 @@ export async function bundle(options: BirudaOptions) {
 
   const outDir = new URL(`${resolvedConfig.outDir}/`, workingDirectory);
 
-  // archiver finalize() exits without error if the outDir doesn't exist
-  await mkdir(outDir, {
-    recursive: true,
-  });
-
-  const { outputFiles, outputDir, cleanup } = await build({
+  const { outputFiles, buildDir, cleanup } = await build({
     workingDirectory,
     entryPoints: resolvedConfig.entryPoints,
     externals: resolvedConfig.externals,
     ignorePackages: resolvedConfig.ignorePackages,
     sourceType: resolvedConfig.sourceType,
     debug: resolvedConfig.debug,
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      ...(resolvedConfig.versionName && {
+        'process.env.VERSION_NAME': JSON.stringify(resolvedConfig.versionName),
+      }),
+    },
   });
 
   const workspaceRoot = await findWorkspaceRoot(workingDirectory);
@@ -149,11 +149,7 @@ export async function bundle(options: BirudaOptions) {
     outputFiles.map(([, fileName]) => fileName),
     {
       workspaceRoot,
-      ignorePaths: [
-        relative(fileURLToPath(workspaceRoot), outputDir),
-        // ...outputFiles.map(([, fileName]) => fileName),
-        'node:*',
-      ],
+      ignorePaths: ['node:*', relative(fileURLToPath(workspaceRoot), buildDir)],
       ignorePackages: [
         // don't need to trace extraModules, because we will always add everything
         // ...(resolvedConfig.extraModules || []),
@@ -244,48 +240,77 @@ export async function bundle(options: BirudaOptions) {
     // ),
   };
 
-  await writeFile(
-    join(outputDir, 'package.json'),
-    JSON.stringify(newPackageJson, null, 2),
+  const outDirAsPath = fileURLToPath(outDir);
+  const workspaceRootAsPath = fileURLToPath(workspaceRoot);
+
+  await mkdir(outDir, {
+    recursive: true,
+  }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EEXIST') {
+      throw err;
+    }
+  });
+
+  logger.trace(
+    'Copying built files from %s to %s',
+    buildDir,
+    fileURLToPath(workingDirectory),
   );
 
-  const bundleSource = outputDir;
-
-  const archiveResult = await archiveFiles({
-    workspaceRoot,
-    bundleSource,
-    bundleDest: relative(
-      fileURLToPath(workspaceRoot),
-      fileURLToPath(workingDirectory),
+  // copy built files
+  await cp(
+    buildDir,
+    join(
+      outDirAsPath,
+      relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
     ),
-    files,
-    extras,
-    outDir,
-    format: resolvedConfig.archiveFormat,
-    compressionLevel: resolvedConfig.compressionLevel,
-  });
+    { recursive: true },
+  );
+
+  // eslint-disable-next-line no-restricted-syntax
+  for await (const file of files) {
+    const destFile = join(outDirAsPath, file);
+    const destDir = dirname(destFile);
+
+    await mkdir(destDir, {
+      recursive: true,
+    }).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'EEXIST') {
+        throw err;
+      }
+    });
+
+    await copyFile(join(workspaceRootAsPath, file), destFile);
+  }
+
+  // WARN: copy new manifest, this overwrites the one there already
+  await writeFile(
+    new URL('package.json', outDir),
+    JSON.stringify(newPackageJson, null, 2),
+  );
 
   await cleanup().catch((err) => logger.warn(err.message));
 
   return {
     outDir,
-    bundleSource,
-    entries: new Set([...files, ...extras]),
-    archiveResult,
+    files,
   };
 }
 
 export async function cliBundle(cliArguments: BirudaCliArguments) {
-  const { outDir, archiveResult } = await bundle(
+  const { outDir } = await bundle(
     // remove undefined props
     Object.fromEntries(
       Object.entries(cliArguments).filter(([, v]) => v !== undefined),
     ),
   );
 
+  const [files, size] = [0, 0] || (await dirSize(outDir));
+
   logger.info(
-    `Done. Output at %s (%d bytes)`,
+    `Done. Output at %s (~%skb in %d files)`,
     outDir,
-    archiveResult.bytesWritten,
+    new Intl.NumberFormat().format(Math.round(size / 1024)),
+    files,
   );
 }

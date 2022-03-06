@@ -1,5 +1,6 @@
 import { findUp, pathExists } from 'find-up';
-import fs from 'fs/promises';
+import { PathLike, readdirSync, statSync } from 'fs';
+import fs, { lstat, readdir, stat } from 'fs/promises';
 import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { packageDirectory } from 'pkg-dir';
@@ -275,4 +276,36 @@ export function basicDebounce<T extends (...args: any[]) => any>(
 
 export async function readJsonFile<T = JsonValue>(file: URL): Promise<T> {
   return JSON.parse(await fs.readFile(file, 'utf-8'));
+}
+
+export async function recursiveReaddir(dir: PathLike): Promise<PathLike[]> {
+  const paths = await readdir(dir);
+  const files = await Promise.all(
+    paths.flatMap(async (path) => {
+      const absPath = new URL(`./${path}`, dir.toString());
+      console.log({ path, dir: dir.toString(), absPath: absPath.toString() });
+      const stats = await stat(absPath);
+      if (stats.isDirectory()) {
+        return recursiveReaddir(`${absPath}/`);
+      }
+      return [absPath];
+    }),
+  );
+
+  return files.flat();
+}
+
+export async function dirSize(
+  dir: PathLike,
+): Promise<[files: number, size: number]> {
+  const files = await recursiveReaddir(
+    !dir.toString().endsWith('/') ? `${dir.toString()}/` : dir,
+  );
+  const size = await files.reduce(async (accum, file) => {
+    const total = await accum;
+    const stats = await stat(file);
+    return total + stats.size;
+  }, Promise.resolve(0));
+
+  return [files.length, size];
 }

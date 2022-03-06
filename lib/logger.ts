@@ -7,7 +7,7 @@ export const logger = createCliLogger({
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {
   if (lvl !== prevLvl) {
-    logger.info(
+    logger.debug(
       'Logger level %s (%d) was changed to %s (%d)',
       prevLvl,
       prevVal,

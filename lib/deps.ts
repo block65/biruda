@@ -125,6 +125,8 @@ export async function traceFiles(
   files: Set<string>;
   reasons: NodeFileTraceReasons;
 }> {
+  logger.info('Tracing dependencies...');
+
   const base = options.workspaceRoot && fileURLToPath(options.workspaceRoot);
 
   const opts: NodeFileTraceOptions = {
@@ -149,7 +151,7 @@ export async function traceFiles(
 
   const { fileList, esmFileList, reasons } = traceResult;
 
-  logger.info(
+  logger.debug(
     'Found %d files, %d esmFileList in trace',
     fileList.size,
     esmFileList.size,
@@ -183,6 +185,8 @@ export async function traceFiles(
   const resolvedEntryPoints = Array.from(reasons.entries())
     .filter(([, reason]) => reason.type === 'initial')
     .map(([file]) => file);
+
+  logger.info('Trace complete.');
 
   return {
     reasons,

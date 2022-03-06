@@ -42,11 +42,6 @@ yargs(hideBin(process.argv))
           string: true,
           description: 'Externals for bundle',
         })
-        .option('archiveFormat', {
-          alias: ['a'],
-          choices: ['tar', 'zip'],
-          description: 'Archive format - tar or zip',
-        })
         .option('sourceType', {
           alias: ['t'],
           choices: ['esm', 'cjs'],
@@ -56,27 +51,22 @@ yargs(hideBin(process.argv))
           alias: ['d'],
           type: 'boolean',
         })
-        .option('compressionLevel', {
-          alias: ['z'],
-          type: 'number',
-          number: true,
-          choices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-          description:
-            'Compression level. 0 is no compress, 9 is best compression',
-        })
         .option('extraModules', {
           alias: ['force-include'],
           type: 'array',
           string: true,
           description: 'Force include file paths or modules',
+        })
+        .option('versionName', {
+          alias: ['n'],
+          type: 'string',
+          description: 'Version name',
         });
     },
     (argv) => {
       cliBundle({
         externals: argv.externals,
         debug: argv.debug,
-        archiveFormat: argv.archiveFormat,
-        compressionLevel: argv.compressionLevel,
         configFile: argv.configFile,
         entryPoints: argv.entryPoints,
         extraModules: argv.extraModules,
@@ -84,8 +74,8 @@ yargs(hideBin(process.argv))
         ignorePackages: argv.ignorePackages,
         logLevel: argv.logLevel,
         outDir: argv.outDir,
-        sourceMapSupport: argv.sourceMapSupport,
         sourceType: argv.sourceType,
+        versionName: argv.versionName,
       }).catch((err) => {
         logger.fatal(err);
         process.exitCode = 1;
