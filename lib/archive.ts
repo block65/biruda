@@ -118,12 +118,12 @@ export async function archiveFiles({
   // pipe archive data to the output
   archive.pipe(output);
 
-  archive.on('entry', () => {});
+  // archive.on('entry', () => {});
 
   logger.trace('Archiving pkgDir %s into %s', bundleSource, bundleDest);
   archive.directory(bundleSource, bundleDest);
 
-  logger.debug(/*Array.from(files), */ `Adding %d files...`, files.size);
+  logger.debug(/* Array.from(files), */ `Adding %d files...`, files.size);
   files.forEach((file) => {
     // exclude the original package.json, we added it above into the workingModuleDir
     if (file === join(bundleDest, 'package.json')) {
@@ -139,6 +139,7 @@ export async function archiveFiles({
 
   logger.debug(Array.from(extras), 'Archiving %d extras', extras.size);
 
+  // eslint-disable-next-line no-restricted-syntax
   for await (const path of extras) {
     const absolutePath = maybeMakeAbsolute(path, base);
 
@@ -193,52 +194,50 @@ export async function archiveFiles({
       } else {
         logger.warn('Ignored %s. Not a dir or file', absolutePath);
       }
+    } else if (looksGlobbish) {
+      logger.trace('Archiving %s (using glob with base %s)', path, base);
+
+      // NOTE: Archivers own glob is sloowwwwww, so we use our own
+      await new Promise<void>((resolve, reject) => {
+        glob(
+          path,
+          {
+            debug: logger.levelVal < 30,
+            cwd: base,
+            absolute: true,
+          },
+          function (err, globFiles) {
+            if (err) {
+              return reject(err);
+            }
+
+            logger.trace(
+              'Archiving %d files (via glob %s)',
+              globFiles.length,
+              path,
+            );
+
+            globFiles.forEach((f) =>
+              archive.file(f, {
+                name: relative(fileURLToPath(workspaceRoot), f),
+              }),
+            );
+            resolve();
+          },
+        );
+      });
+
+      // archive.glob(
+      //   absolutePath,
+      //   {
+      //     cwd: base,
+      //   },
+      //   {
+      //     // prefix,
+      //   },
+      // );
     } else {
-      if (looksGlobbish) {
-        logger.trace('Archiving %s (using glob with base %s)', path, base);
-
-        //NOTE: Archivers own glob is sloowwwwww, so we use our own
-        await new Promise<void>((resolve, reject) => {
-          glob(
-            path,
-            {
-              debug: logger.levelVal < 30,
-              cwd: base,
-              absolute: true,
-            },
-            function (err, globFiles) {
-              if (err) {
-                return reject(err);
-              }
-
-              logger.trace(
-                'Archiving %d files (via glob %s)',
-                globFiles.length,
-                path,
-              );
-
-              globFiles.forEach((f) =>
-                archive.file(f, {
-                  name: relative(fileURLToPath(workspaceRoot), f),
-                }),
-              );
-              resolve();
-            },
-          );
-        });
-
-        // archive.glob(
-        //   absolutePath,
-        //   {
-        //     cwd: base,
-        //   },
-        //   {
-        //     // prefix,
-        //   },
-        // );
-      } else {
-        logger.warn('Ignored %s. doesnt exist', absolutePath);
-      }
+      logger.warn('Ignored %s. doesnt exist', absolutePath);
     }
   }
 
