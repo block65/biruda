@@ -62,7 +62,7 @@ export async function build(options: EsBuildOptions): Promise<{
     unsafeCleanup: true,
   });
 
-  const clean = () => cleanup().catch((err) => logger.warn(err));
+  const clean = () => cleanup();
 
   process.on('beforeExit', clean);
   process.on('exit', clean);
@@ -120,7 +120,7 @@ export async function build(options: EsBuildOptions): Promise<{
     logger.info('Build warnings: %d', buildResult.warnings.length);
 
     buildResult.warnings.forEach((warn) => {
-      logger.warn(warn, `Warning: ${warn.text}`);
+      logger.warn(warn, warn.text);
     });
   }
 
@@ -147,8 +147,11 @@ export async function build(options: EsBuildOptions): Promise<{
           }) || [];
 
         if (!entryPointName) {
-          logger.warn({ entryPoints, outputFilePathBasename, exts });
-          throw new Error('Cant find matching entry point for build output ');
+          logger.warn(
+            { entryPoints, outputFilePathBasename, exts },
+            'Cant find matching entry point for build output',
+          );
+          throw new Error('Cant find matching entry point for build output');
         }
 
         const fileName = `${join(buildDir, entryPointName)}.${exts.join('.')}`;

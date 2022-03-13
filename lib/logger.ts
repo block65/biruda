@@ -1,8 +1,7 @@
 import { createLogger } from '@block65/logger';
 
 export const logger = createLogger({
-  level: 'info',
-  prettyOptions: true,
+  level: 'debug',
 });
 
 logger.on('level-change', (lvl, val, prevLvl, prevVal) => {

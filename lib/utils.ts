@@ -1,8 +1,15 @@
 import { findUp, pathExists } from 'find-up';
-import { PathLike, readdirSync, statSync } from 'fs';
-import fs, { lstat, readdir, stat } from 'fs/promises';
+import { PathLike } from 'fs';
+import fs, { readdir, stat } from 'fs/promises';
+import glob from 'glob';
 import { createRequire } from 'module';
-import { dirname, isAbsolute, join, relative, resolve } from 'path';
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve as resolvePath,
+} from 'path';
 import { packageDirectory } from 'pkg-dir';
 import type { AsyncReturnType, JsonValue } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
@@ -15,7 +22,7 @@ export function maybeMakeAbsolute(entry: string, baseDir: string): string {
   if (isAbsolute(entry)) {
     return entry;
   }
-  return resolve(baseDir, entry);
+  return resolvePath(baseDir, entry);
 }
 
 export function dedupeArray<T extends any>(arr: T[]): T[] {
@@ -80,7 +87,7 @@ export async function resolveModuleRoot(
       const parent = join(directory, packageRhs);
       const maybeManifest = join(parent, 'package.json');
       const found = await pathExists(maybeManifest);
-      logger.trace({ directory, maybeManifest, found });
+      // logger.trace({ directory, maybeManifest, found });
       return found ? parent : undefined;
     },
     {
@@ -150,8 +157,8 @@ export async function getDependencyPathsFromModule(
 ): Promise<void> {
   const logPrefixString = [...parents, name].join('->');
 
-  logger.debug(
-    { parents },
+  logger.trace(
+    // { parents },
     '[%s] Resolving module root for %s',
     logPrefixString,
     name,
@@ -168,7 +175,7 @@ export async function getDependencyPathsFromModule(
     // We have to ignore it here because it may not even be require'd
     // by the parent package at runtime
     if (
-      ('code' in err && err.code == 'MODULE_NOT_FOUND') ||
+      ('code' in err && err.code === 'MODULE_NOT_FOUND') ||
       err.message?.match(/cannot find module/i)
     ) {
       // this check just keeps noise to a minimum
@@ -180,7 +187,7 @@ export async function getDependencyPathsFromModule(
         // HACK
         !name.startsWith('babel-runtime')
       ) {
-        logger.warn(err.message);
+        logger.warn(err);
       }
       return;
     }
@@ -208,7 +215,34 @@ export async function getDependencyPathsFromModule(
     throw new Error(`Unable to locate manifest for ${name}`);
   }
 
-  includeCallback(moduleRoot, name);
+  // const files = Object.keys(pkgJson.files || []);
+
+  if (pkgJson.files) {
+    // eslint-disable-next-line no-restricted-syntax
+    for await (const fileGlob of pkgJson.files) {
+      const pkgFiles = await new Promise<string[]>((resolve, reject) => {
+        glob(
+          fileGlob,
+          {
+            cwd: fileURLToPath(moduleRoot),
+            ignore: ['**/*.d.ts'], // we force ignoring of types
+          },
+          (err, files) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(files);
+            }
+          },
+        );
+      });
+      pkgFiles.forEach((file) =>
+        includeCallback(new URL(file, moduleRoot), name),
+      );
+    }
+  } else {
+    includeCallback(moduleRoot, name);
+  }
 
   // Check for symlinked module in a monorepo
   const relPath = relativeFileUrl(workspaceRoot, moduleRoot);
@@ -244,7 +278,6 @@ export async function getDependencyPathsFromModule(
 }
 
 // create a function that will definitely run at least once, every `delay` seconds
-
 export function basicThrottle<T extends (...args: any[]) => any>(
   callback: T,
   delay: number,
@@ -308,4 +341,18 @@ export async function dirSize(
   }, Promise.resolve(0));
 
   return [files.length, size];
+}
+
+export function partitionArray<T>(
+  arr: T[],
+  predicate: (value: T, idx: number) => boolean,
+): [T[], T[]] {
+  return arr.reduce<[T[], T[]]>(
+    ([met, unmet], elem, idx): [T[], T[]] => {
+      return predicate(elem, idx)
+        ? [[...met, elem], unmet]
+        : [met, [...unmet, elem]];
+    },
+    [[], []],
+  );
 }

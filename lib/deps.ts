@@ -136,6 +136,7 @@ export async function traceFiles(
     //   options.workingDirectory && fileURLToPath(options.workingDirectory),
     log: logger.levelVal < 30,
     ignore: [
+      'node:*',
       ...(options.ignorePackages || []).map((pkg) => `node_modules/${pkg}/**`),
       ...(options.ignorePaths || []).map((path) => `${path}/**`),
     ],
@@ -151,7 +152,8 @@ export async function traceFiles(
 
   const { fileList, esmFileList, reasons } = traceResult;
 
-  logger.debug(
+  logger.info(
+    { reasons: [...Object.entries(reasons)], size: reasons.size },
     'Found %d files, %d esmFileList in trace',
     fileList.size,
     esmFileList.size,
@@ -183,7 +185,9 @@ export async function traceFiles(
 
   // find and exclude the initial entry points
   const resolvedEntryPoints = Array.from(reasons.entries())
+    .filter(([, reason]) => !reason.ignored)
     .filter(([, reason]) => reason.type === 'initial')
+    .filter(([, reason]) => reason.type !== 'resolve')
     .map(([file]) => file);
 
   logger.info('Trace complete.');

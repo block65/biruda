@@ -1,4 +1,12 @@
-import { copyFile, cp, mkdir, writeFile } from 'fs/promises';
+import {
+  copyFile,
+  cp,
+  lstat,
+  mkdir,
+  readlink,
+  symlink,
+  writeFile,
+} from 'fs/promises';
 import { basename, dirname, extname, join, relative, resolve } from 'path';
 import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
@@ -164,7 +172,7 @@ export async function bundle(options: BirudaOptions) {
   if (resolvedConfig.extraModules && resolvedConfig.extraModules.length > 0) {
     logger.info(
       resolvedConfig.extraModules,
-      'Including %d modules',
+      'Including %d extra modules',
       resolvedConfig.extraModules.length,
     );
   }
@@ -175,7 +183,7 @@ export async function bundle(options: BirudaOptions) {
   // must run serially due to path descending and caching
   // eslint-disable-next-line no-restricted-syntax
   for await (const name of resolvedConfig.extraModules || []) {
-    logger.trace('[%s] getting deps for extra module %s', name);
+    logger.info('[%s] resolving module deps + files', name);
 
     await getDependencyPathsFromModule(
       name,
@@ -184,26 +192,26 @@ export async function bundle(options: BirudaOptions) {
       function shouldDescend(modulePath, moduleName) {
         const include = !modulePaths.has(modulePath.toString());
         if (include) {
-          logger.trace('[%s] including %s', moduleName, modulePath);
+          logger.info('[%s] including module %s', moduleName, modulePath);
           modulePaths.add(modulePath.toString());
         } else {
-          logger.trace('[%s] ignoring %s', moduleName, modulePath);
+          logger.info('[%s] ignoring %s', moduleName, modulePath);
         }
         return include;
       },
       function includeCallback(path) {
         const relPath = relativeFileUrl(workspaceRoot, path);
         if (!files.has(new URL(`./${relPath}`, workspaceRoot).toString())) {
-          logger.trace(
-            { path: path.toString() },
+          logger.info(
+            // { path: path.toString() },
             '[%s] including path %s',
             name,
             relPath,
           );
           extras.add(relPath);
         } else {
-          logger.trace(
-            { absPath: path.toString() },
+          logger.info(
+            // { absPath: path.toString() },
             '[%s] already got path %s',
             name,
             relPath,
@@ -254,7 +262,10 @@ export async function bundle(options: BirudaOptions) {
   logger.trace(
     'Copying built files from %s to %s',
     buildDir,
-    fileURLToPath(workingDirectory),
+    join(
+      outDirAsPath,
+      relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
+    ),
   );
 
   // copy built files
@@ -267,20 +278,45 @@ export async function bundle(options: BirudaOptions) {
     { recursive: true },
   );
 
+  const augmentedFiles = await Promise.all(
+    [...files, ...extras].map(async (file) => {
+      const srcFile = join(workspaceRootAsPath, file);
+      const srcFileStat = await lstat(srcFile);
+
+      const destFile = join(outDirAsPath, file);
+      const destDir = dirname(destFile);
+
+      const isSymlink = srcFileStat.isSymbolicLink();
+      return { file, srcFile, destFile, destDir, isSymlink };
+    }),
+  );
+
+  const destDirs = new Set(augmentedFiles.map(({ destDir }) => destDir));
   // eslint-disable-next-line no-restricted-syntax
-  for await (const file of files) {
-    const destFile = join(outDirAsPath, file);
-    const destDir = dirname(destFile);
-
-    await mkdir(destDir, {
+  for await (const dir of destDirs) {
+    await mkdir(dir, {
       recursive: true,
-    }).catch((err: NodeJS.ErrnoException) => {
-      if (err.code !== 'EEXIST') {
-        throw err;
-      }
     });
+  }
 
-    await copyFile(join(workspaceRootAsPath, file), destFile);
+  // eslint-disable-next-line no-restricted-syntax
+  for await (const file of augmentedFiles.filter(
+    ({ isSymlink }) => !isSymlink,
+  )) {
+    // await copyFile(file.srcFile, file.destFile); // , {
+    await cp(file.srcFile, file.destFile, {
+      errorOnExist: true, // safety first, could be a bug
+      recursive: true,
+      //   verbatimSymlinks: true, // node17 only
+    });
+  }
+
+  // eslint-disable-next-line no-restricted-syntax
+  for await (const file of augmentedFiles.filter(
+    ({ isSymlink }) => isSymlink,
+  )) {
+    const target = await readlink(file.srcFile);
+    await symlink(target, file.destFile);
   }
 
   // WARN: copy new manifest, this overwrites the one there already
@@ -305,7 +341,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
     ),
   );
 
-  const [files, size] = [0, 0] || (await dirSize(outDir));
+  const [files, size] = [Infinity, Infinity] || (await dirSize(outDir));
 
   logger.info(
     `Done. Output at %s (~%skb in %d files)`,
