@@ -165,6 +165,10 @@ export async function bundle(options: BirudaOptions) {
         // .filter(
         //   (pkg): pkg is string => typeof pkg === 'string',
         // ),
+
+        // extraModules are ignored because we will copy the entire
+        // module and its deps later, no point tracing it
+        ...resolvedConfig.extraModules,
       ],
     },
   );
