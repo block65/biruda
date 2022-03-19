@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // eslint-disable-next-line import/extensions
-import 'source-map-support/register.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { cliBundle } from '../lib/bundle.js';
