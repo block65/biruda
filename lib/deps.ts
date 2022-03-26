@@ -24,15 +24,15 @@ interface Warning extends Error {
 async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: false,
-): Promise<PackageJson | null>;
+): Promise<[PackageJson | null, URL | null]>;
 async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: true,
-): Promise<PackageJson>;
+): Promise<[PackageJson, URL]>;
 async function loadPackageJsonInner(
   dirOrFile: string | URL,
   throwOnMissing?: boolean,
-): Promise<PackageJson | null> {
+): Promise<[PackageJson | null, URL | null]> {
   const dirOrFileAsUrl =
     dirOrFile instanceof URL ? dirOrFile : pathToFileURL(dirOrFile);
 
@@ -45,9 +45,9 @@ async function loadPackageJsonInner(
     .catch(() => false);
 
   if (throwOnMissing || exists) {
-    return JSON.parse(await readFile(file, 'utf-8'));
+    return [JSON.parse(await readFile(file, 'utf-8')), file];
   }
-  return null;
+  return [null, null];
 }
 
 export const loadPackageJson = pMemoize(loadPackageJsonInner, {
@@ -65,7 +65,7 @@ export async function findWorkspaceRoot(initial: URL): Promise<URL> {
     // suppress eslint here because this needs to be sequential/ serial
     // and cannot be parallelised
     // eslint-disable-next-line no-await-in-loop
-    const manifest = await loadPackageJson(currentDirectory);
+    const [manifest] = await loadPackageJson(currentDirectory);
 
     if (manifest) {
       const workspaces = Array.isArray(manifest.workspaces)

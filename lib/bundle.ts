@@ -85,12 +85,11 @@ export async function bundle(options: BirudaOptions) {
     ? pathToFileURL(join(dirname(configFileLocation), '/'))
     : pathToFileURL(join(process.cwd(), '/'));
 
+  const [packageJson] = await loadPackageJson(workingDirectory);
+
   const configFileProps: BirudaConfigFileProperties =
     configPropsOrFunction instanceof Function
-      ? await configPropsOrFunction(
-          options,
-          await loadPackageJson(workingDirectory),
-        )
+      ? await configPropsOrFunction(options, packageJson)
       : configPropsOrFunction;
 
   const resolvedConfig = {
@@ -159,8 +158,6 @@ export async function bundle(options: BirudaOptions) {
       workspaceRoot,
       ignorePaths: ['node:*', relative(fileURLToPath(workspaceRoot), buildDir)],
       ignorePackages: [
-        // don't need to trace extraModules, because we will always add everything
-        // ...(resolvedConfig.extraModules || []),
         ...(resolvedConfig.ignorePackages || []),
         // .filter(
         //   (pkg): pkg is string => typeof pkg === 'string',
@@ -214,7 +211,7 @@ export async function bundle(options: BirudaOptions) {
           );
           extras.add(relPath);
         } else {
-          logger.info(
+          logger.trace(
             // { absPath: path.toString() },
             '[%s] already got path %s',
             name,
@@ -224,8 +221,6 @@ export async function bundle(options: BirudaOptions) {
       },
     );
   }
-
-  const packageJson = await loadPackageJson(workingDirectory);
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
     name: packageJson?.name,

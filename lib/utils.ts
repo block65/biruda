@@ -148,24 +148,24 @@ export function relativeFileUrl(from: URL, to: URL): string {
 }
 
 export async function getDependencyPathsFromModule(
-  name: string,
+  moduleName: string,
   base: URL,
   workspaceRoot: URL,
   descendCallback: (path: URL, name: string) => boolean,
   includeCallback: (path: URL, name: string) => void,
   parents: string[] = [],
 ): Promise<void> {
-  const logPrefixString = [...parents, name].join('->');
+  const logPrefixString = [...parents, moduleName].join('->');
 
   logger.trace(
     // { parents },
     '[%s] Resolving module root for %s',
     logPrefixString,
-    name,
+    moduleName,
   );
 
   const moduleRoot = await resolveModuleRoot(
-    name,
+    moduleName,
     base,
     workspaceRoot,
     parents[parents.length - 1],
@@ -181,11 +181,11 @@ export async function getDependencyPathsFromModule(
       // this check just keeps noise to a minimum
       if (
         // definitelytyped
-        !name.startsWith('@types') &&
+        !moduleName.startsWith('@types') &&
         // type-fest etc
-        !name.startsWith('type-') &&
+        !moduleName.startsWith('type-') &&
         // HACK
-        !name.startsWith('babel-runtime')
+        !moduleName.startsWith('babel-runtime')
       ) {
         logger.warn(err);
       }
@@ -203,17 +203,20 @@ export async function getDependencyPathsFromModule(
     return;
   }
 
-  if (!descendCallback(moduleRoot, name)) {
+  if (!descendCallback(moduleRoot, moduleName)) {
     return;
   }
 
   logger.trace('[%s] resolved module to %s', logPrefixString, moduleRoot);
 
-  const pkgJson = await loadPackageJson(moduleRoot);
+  const [pkgJson, pkgJsonPath] = await loadPackageJson(moduleRoot);
 
-  if (!pkgJson) {
-    throw new Error(`Unable to locate manifest for ${name}`);
+  if (!pkgJson || !pkgJsonPath) {
+    throw new Error(`Unable to locate manifest/manifestPath for ${moduleName}`);
   }
+
+  // add the package.json
+  includeCallback(pkgJsonPath, moduleName);
 
   // const files = Object.keys(pkgJson.files || []);
 
@@ -237,17 +240,20 @@ export async function getDependencyPathsFromModule(
         );
       });
       pkgFiles.forEach((file) =>
-        includeCallback(new URL(file, moduleRoot), name),
+        includeCallback(new URL(file, moduleRoot), moduleName),
       );
     }
   } else {
-    includeCallback(moduleRoot, name);
+    includeCallback(moduleRoot, moduleName);
   }
 
   // Check for symlinked module in a monorepo
   const relPath = relativeFileUrl(workspaceRoot, moduleRoot);
   if (!relPath.startsWith('node_modules')) {
-    includeCallback(new URL(`./node_modules/${name}`, workspaceRoot), name);
+    includeCallback(
+      new URL(`./node_modules/${moduleName}`, workspaceRoot),
+      moduleName,
+    );
   }
 
   const dependencies = Object.keys(pkgJson.dependencies || {});
@@ -272,7 +278,7 @@ export async function getDependencyPathsFromModule(
       workspaceRoot,
       descendCallback,
       includeCallback,
-      [...parents, name],
+      [...parents, moduleName],
     );
   });
 }
