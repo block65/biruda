@@ -187,8 +187,8 @@ export async function traceFiles(
   // find and exclude the initial entry points
   const resolvedEntryPoints = Array.from(reasons.entries())
     .filter(([, reason]) => !reason.ignored)
-    .filter(([, reason]) => reason.type === 'initial')
-    .filter(([, reason]) => reason.type !== 'resolve')
+    .filter(([, reason]) => reason.type.includes('initial'))
+    .filter(([, reason]) => reason.type.includes('resolve'))
     .map(([file]) => file);
 
   logger.info('Trace complete.');
