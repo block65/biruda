@@ -216,36 +216,42 @@ export async function getDependencyPathsFromModule(
   }
 
   // add the package.json
-  includeCallback(pkgJsonPath, moduleName);
+  // includeCallback(pkgJsonPath, moduleName);
 
   // const files = Object.keys(pkgJson.files || []);
 
-  if (pkgJson.files) {
-    // eslint-disable-next-line no-restricted-syntax
-    for await (const fileGlob of pkgJson.files) {
-      const pkgFiles = await new Promise<string[]>((resolve, reject) => {
-        glob(
-          fileGlob,
-          {
-            cwd: fileURLToPath(moduleRoot),
-            ignore: ['**/*.d.ts'], // we force ignoring of types
-          },
-          (err, files) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(files);
-            }
-          },
-        );
-      });
-      pkgFiles.forEach((file) =>
-        includeCallback(new URL(file, moduleRoot), moduleName),
-      );
-    }
-  } else {
-    includeCallback(moduleRoot, moduleName);
-  }
+  // const pkgFiles = await readdir(moduleRoot, { withFileTypes: true });
+
+  // pkgFiles.forEach((dirent) => {
+  //   // we force ignoring of types to save space
+  //   if (dirent.isFile() && !dirent.name.endsWith('.d.ts')) {
+  //     includeCallback(new URL(dirent.name, moduleRoot), moduleName);
+  //   } else {
+  //     logger.trace('[%s] pkgFile %s IGNORED', logPrefixString, dirent.name);
+  //   }
+  // });
+
+  const pkgFiles = await new Promise<string[]>((resolve, reject) => {
+    glob(
+      `${fileURLToPath(moduleRoot)}/**/*`,
+      {
+        cwd: fileURLToPath(moduleRoot),
+        // we force ignoring of types
+        ignore: ['**/*.d.ts', join(fileURLToPath(moduleRoot), 'node_modules')],
+      },
+      (err, files) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(files);
+        }
+      },
+    );
+  });
+
+  pkgFiles.forEach((file) =>
+    includeCallback(new URL(file, moduleRoot), moduleName),
+  );
 
   // Check for symlinked module in a monorepo
   const relPath = relativeFileUrl(workspaceRoot, moduleRoot);
