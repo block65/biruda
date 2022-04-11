@@ -1,3 +1,4 @@
+import { Level } from '@block65/logger';
 import * as esbuild from 'esbuild';
 import { mkdir, writeFile } from 'fs/promises';
 import { basename, dirname, join } from 'path';
@@ -7,7 +8,7 @@ import { fileURLToPath, URL } from 'url';
 import { logger as parentLogger } from '../logger.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
 
-const logger = parentLogger.child({ name: 'esbuild' });
+const logger = parentLogger.child({}, { context: { name: 'esbuild' } });
 
 interface EsBuildOptions {
   entryPoints: Record<string, string>;
@@ -76,7 +77,7 @@ export async function build(options: EsBuildOptions): Promise<{
   const finalEsBuildOptions: esbuild.BuildOptions = {
     absWorkingDir: fileURLToPath(workingDirectory),
     platform: 'node',
-    logLevel: logger.levelVal < 30 ? 'info' : undefined,
+    logLevel: logger.level < Level.Info ? 'info' : undefined,
     external: externals.filter((ext): ext is string => typeof ext === 'string'),
     entryPoints,
     outdir: buildDir,

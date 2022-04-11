@@ -1,3 +1,4 @@
+import { Level } from '@block65/logger';
 import {
   nodeFileTrace,
   NodeFileTraceOptions,
@@ -12,7 +13,7 @@ import type { PackageJson } from 'type-fest';
 import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { logger as parentLogger } from './logger.js';
 
-const logger = parentLogger.child({ name: 'deps' });
+const logger = parentLogger.child({}, { context: { name: 'deps' } });
 
 interface Warning extends Error {
   lineText?: string;
@@ -134,7 +135,7 @@ export async function traceFiles(
     base,
     // processCwd:
     //   options.workingDirectory && fileURLToPath(options.workingDirectory),
-    log: logger.levelVal < 30,
+    log: logger.level < Level.Info,
     ignore: [
       'node:*',
       ...(options.ignorePackages || []).map((pkg) => `node_modules/${pkg}/**`),

@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { loadPackageJson } from './deps.js';
 import { logger as parentLogger } from './logger.js';
 
-const logger = parentLogger.child({ name: 'utils' });
+const logger = parentLogger.child({}, { context: { name: 'utils' } });
 
 export function maybeMakeAbsolute(entry: string, baseDir: string): string {
   if (isAbsolute(entry)) {

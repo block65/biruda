@@ -24,7 +24,7 @@ import {
   relativeFileUrl,
 } from './utils.js';
 
-const logger = parentLogger.child({ name: 'bundle' });
+const logger = parentLogger.child({}, { context: { name: 'bundle' } });
 
 type ConfigFileExports =
   | BirudaConfigFileProperties
@@ -118,7 +118,7 @@ export async function bundle(options: BirudaOptions) {
   };
 
   if (resolvedConfig.logLevel) {
-    logger.level = resolvedConfig.logLevel;
+    // logger.level = resolvedConfig.logLevel;
   }
 
   // logger.trace({ resolvedConfig, cliArguments, configFileProps });
@@ -193,7 +193,7 @@ export async function bundle(options: BirudaOptions) {
       function shouldDescend(modulePath, moduleName) {
         const include = !modulePaths.has(modulePath.toString());
         if (include) {
-          logger.info('[%s] including module %s', moduleName, modulePath);
+          logger.info('[%s] including module path %s', moduleName, modulePath);
           modulePaths.add(modulePath.toString());
         } else {
           logger.info('[%s] ignoring %s', moduleName, modulePath);
@@ -205,7 +205,7 @@ export async function bundle(options: BirudaOptions) {
         if (!files.has(new URL(`./${relPath}`, workspaceRoot).toString())) {
           logger.info(
             // { path: path.toString() },
-            '[%s] including path %s',
+            '[%s] including file %s',
             name,
             relPath,
           );
