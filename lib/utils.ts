@@ -236,8 +236,14 @@ export async function getDependencyPathsFromModule(
       `${fileURLToPath(moduleRoot)}/**/*`,
       {
         cwd: fileURLToPath(moduleRoot),
-        // we force ignoring of types
-        ignore: ['**/*.d.ts', join(fileURLToPath(moduleRoot), 'node_modules')],
+        ignore: [
+          // ignore type declarations
+          '**/*.d.ts',
+          // ignore jest tests
+          '**/__tests__/**/*',
+          // ignore node_modules
+          '**/node_modules/**/*',
+        ],
       },
       (err, files) => {
         if (err) {
