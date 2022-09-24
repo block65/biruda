@@ -98,8 +98,7 @@ export async function build(options: EsBuildOptions): Promise<{
     legalComments: 'none',
     define: options.define,
     banner: {
-      // WARN: the variable here is not considered for minification and can conflict
-      js: 'import { createRequire as __birudaTopLevelCreateRequire } from "module";\n const require = __birudaTopLevelCreateRequire(import.meta.url);',
+      js: 'await(async()=>{const{dirname:i}=await import("node:path"),{fileURLToPath:a}=await import("node:url");if(void 0===globalThis.__filename&&(globalThis.__filename=a(import.meta.url)),void 0===globalThis.__dirname&&(globalThis.__dirname=i(globalThis.__filename)),void 0===globalThis.require){const{default:i}=await import("module");globalThis.require=i.createRequire(import.meta.url)}})();',
     },
     plugins: [
       externalsRegExpPlugin({
