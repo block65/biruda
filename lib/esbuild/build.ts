@@ -141,7 +141,7 @@ export async function build(options: EsBuildOptions): Promise<{
         const [entryPointName /* , entryPointFileForOutput */] =
           Object.entries(entryPoints).find(([, entryPointFile]) => {
             return (
-              basename(entryPointFile).replace(/\.[t|j]s$/, '') ===
+              basename(entryPointFile).replace(/\.[t|j]sx?$/, '') ===
               outputFilePathBasename
             );
           }) || [];
