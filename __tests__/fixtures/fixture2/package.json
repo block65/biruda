@@ -3,9 +3,7 @@
   "version": "1.0.3",
   "main": "dist/src/index.js",
   "license": "MIT",
-  "dependencies": {
-
-  },
+  "dependencies": {},
   "devDependencies": {
     "@block65/biruda": "*",
     "typescript": "4.5.5",

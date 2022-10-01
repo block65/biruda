@@ -11,9 +11,7 @@ export function externalsRegExpPlugin({
     name: pluginName,
     setup(build) {
       externals.forEach((filter) => {
-        build.onResolve({ filter }, (args) => {
-          return { ...args, external: true };
-        });
+        build.onResolve({ filter }, (args) => ({ ...args, external: true }));
       });
     },
   };

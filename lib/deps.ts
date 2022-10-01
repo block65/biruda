@@ -1,16 +1,15 @@
+import { access, constants, readFile } from 'node:fs/promises';
+import { dirname, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import { Level } from '@block65/logger';
 import {
   nodeFileTrace,
   NodeFileTraceOptions,
   NodeFileTraceReasons,
 } from '@vercel/nft';
-import * as fs from 'fs';
-import { access, readFile } from 'fs/promises';
 import micromatch from 'micromatch';
 import pMemoize from 'p-memoize';
-import { dirname, relative } from 'path';
 import type { PackageJson } from 'type-fest';
-import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { logger as parentLogger } from './logger.js';
 
 const logger = parentLogger.child({}, { context: { name: 'deps' } });
@@ -41,7 +40,7 @@ async function loadPackageJsonInner(
     ? dirOrFileAsUrl
     : new URL('./package.json', `${dirOrFileAsUrl.toString()}/`);
 
-  const exists = await access(file, fs.constants.F_OK)
+  const exists = await access(file, constants.F_OK)
     .then(() => true)
     .catch(() => false);
 
@@ -138,7 +137,10 @@ export async function traceFiles(
     log: logger.level < Level.Info,
     ignore: [
       'node:*',
-      ...(options.ignorePackages || []).map((pkg) => `node_modules/${pkg}/**`),
+      './node_modules/@types**/*',
+      ...(options.ignorePackages || []).map(
+        (pkg) => `./node_modules/${pkg}/**`,
+      ),
       ...(options.ignorePaths || []).map((path) => `${path}/**`),
     ],
     exportsOnly: true,
@@ -166,7 +168,7 @@ export async function traceFiles(
       if (value.lineText) {
         logger.warn(
           { value },
-          `%s caused by %s in %s:%d:%d`,
+          '%s caused by %s in %s:%d:%d',
           value.message.trim(),
           value.lineText,
           value.file,
@@ -179,7 +181,7 @@ export async function traceFiles(
         // dont warn about node: prefixes
         logger.trace(value.message.trim());
       } else {
-        logger.warn(value.message.trim());
+        logger.warn('Trace warning: %s', value.message.trim());
       }
     });
   }

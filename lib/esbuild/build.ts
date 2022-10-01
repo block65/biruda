@@ -1,14 +1,12 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Level } from '@block65/logger';
-import * as esbuild from 'esbuild';
-import { mkdir, writeFile } from 'fs/promises';
-import { basename, dirname, join } from 'path';
+import esbuild from 'esbuild';
 import { dir } from 'tmp-promise';
 import ts from 'typescript';
-import { fileURLToPath, URL } from 'url';
 import { logger as parentLogger } from '../logger.js';
 import { externalsRegExpPlugin } from './esbuild-plugin-external-wildcard.js';
-
-const logger = parentLogger.child({}, { context: { name: 'esbuild' } });
 
 interface EsBuildOptions {
   entryPoints: Record<string, string>;
@@ -25,23 +23,25 @@ export async function build(options: EsBuildOptions): Promise<{
   buildDir: string;
   cleanup: () => Promise<void>;
 }> {
+  const logger = parentLogger.child({}, { context: { name: 'esbuild' } });
+
   logger.trace(options, 'build options');
 
   const { entryPoints, workingDirectory } = options;
 
   const tsConfigFile = ts.findConfigFile(
     fileURLToPath(workingDirectory),
-    ts.sys.fileExists,
+    ts.sys.fileExists.bind(ts),
     'tsconfig.json',
   );
 
   if (!tsConfigFile) {
     throw new Error(
-      `'Unable to locate tsconfig.json from ${workingDirectory}'`,
+      `'Unable to locate tsconfig.json from ${workingDirectory.toString()}'`,
     );
   }
 
-  const tsConfig = ts.readConfigFile(tsConfigFile, ts.sys.readFile);
+  const tsConfig = ts.readConfigFile(tsConfigFile, ts.sys.readFile.bind(ts));
   const compilerOptions = ts.parseJsonConfigFileContent(
     tsConfig.config,
     ts.sys,
@@ -59,11 +59,12 @@ export async function build(options: EsBuildOptions): Promise<{
     tmpdir: fileURLToPath(workingDirectory),
     dir: './tmp',
     prefix: 'biruda',
-    postfix: '/',
     unsafeCleanup: true,
   });
 
-  const clean = () => cleanup();
+  const clean = () => {
+    cleanup().catch(logger.error);
+  };
 
   process.on('beforeExit', clean);
   process.on('exit', clean);
@@ -117,10 +118,10 @@ export async function build(options: EsBuildOptions): Promise<{
   const buildResult = await esbuild.build(finalEsBuildOptions);
 
   if (buildResult.warnings.length > 0) {
-    logger.info('Build warnings: %d', buildResult.warnings.length);
+    logger.info('esbuild warnings: %d', buildResult.warnings.length);
 
     buildResult.warnings.forEach((warn) => {
-      logger.warn(warn, warn.text);
+      logger.warn(warn, 'esbuild warning: %s', warn.text);
     });
   }
 
@@ -139,12 +140,11 @@ export async function build(options: EsBuildOptions): Promise<{
 
         // find the entrypoint that matches this output file
         const [entryPointName /* , entryPointFileForOutput */] =
-          Object.entries(entryPoints).find(([, entryPointFile]) => {
-            return (
+          Object.entries(entryPoints).find(
+            ([, entryPointFile]) =>
               basename(entryPointFile).replace(/\.[t|j]sx?$/, '') ===
-              outputFilePathBasename
-            );
-          }) || [];
+              outputFilePathBasename,
+          ) || [];
 
         if (!entryPointName) {
           logger.warn(
@@ -179,7 +179,7 @@ export async function build(options: EsBuildOptions): Promise<{
     );
   }
 
-  logger.info(`Build completed`);
+  logger.info('Build completed');
   logger.debug(`Output is in ${buildDir}`);
 
   return {

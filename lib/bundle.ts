@@ -1,15 +1,19 @@
+import assert from 'node:assert';
 import {
-  copyFile,
   cp,
   lstat,
   mkdir,
   readlink,
   symlink,
   writeFile,
-} from 'fs/promises';
-import { basename, dirname, extname, join, relative, resolve } from 'path';
+} from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import Arborist from '@npmcli/arborist';
+import packlist from 'npm-packlist';
+import { packageDirectory } from 'pkg-dir';
 import type { PackageJson } from 'type-fest';
-import { fileURLToPath, pathToFileURL, URL } from 'url';
 import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
@@ -18,11 +22,7 @@ import {
   BirudaConfigFileProperties,
   BirudaOptions,
 } from './types.js';
-import {
-  dirSize,
-  getDependencyPathsFromModule,
-  relativeFileUrl,
-} from './utils.js';
+import { dirSize, serialPromiseMap } from './utils.js';
 
 const logger = parentLogger.child({}, { context: { name: 'bundle' } });
 
@@ -60,10 +60,11 @@ function parseEntryPoints(
     }
 
     return Object.fromEntries(
-      entryPoints.map((entryPoint) => {
-        return [basename(entryPoint).split('.').at(0), entryPoint];
-      }),
-    );
+      entryPoints.map((entryPoint) => [
+        basename(entryPoint).split('.').at(0),
+        entryPoint,
+      ]),
+    ) as Record<string, string>;
   }
 
   return entryPoints || {};
@@ -178,48 +179,43 @@ export async function bundle(options: BirudaOptions) {
     );
   }
 
-  const extras = new Set<string>(resolvedConfig.extraPaths);
-  const modulePaths = new Set<string>();
+  const additionalFiles = new Set<string>(resolvedConfig.extraPaths);
 
   // must run serially due to path descending and caching
   // eslint-disable-next-line no-restricted-syntax
-  for await (const name of resolvedConfig.extraModules || []) {
-    logger.info('[%s] resolving module deps + files', name);
+  for await (const moduleName of [
+    ...(resolvedConfig.externals || []),
+    ...resolvedConfig.extraModules,
+  ] || []) {
+    logger.info('[%s] resolving module deps + files', moduleName);
 
-    await getDependencyPathsFromModule(
-      name,
-      workingDirectory,
-      workspaceRoot,
-      function shouldDescend(modulePath, moduleName) {
-        const include = !modulePaths.has(modulePath.toString());
-        if (include) {
-          logger.info('[%s] including module path %s', moduleName, modulePath);
-          modulePaths.add(modulePath.toString());
-        } else {
-          logger.info('[%s] ignoring %s', moduleName, modulePath);
-        }
-        return include;
-      },
-      function includeCallback(path) {
-        const relPath = relativeFileUrl(workspaceRoot, path);
-        if (!files.has(new URL(`./${relPath}`, workspaceRoot).toString())) {
-          logger.info(
-            // { path: path.toString() },
-            '[%s] including file %s',
-            name,
-            relPath,
-          );
-          extras.add(relPath);
-        } else {
-          logger.trace(
-            // { absPath: path.toString() },
-            '[%s] already got path %s',
-            name,
-            relPath,
-          );
-        }
-      },
-    );
+    const require = createRequire(workingDirectory);
+
+    const resolvedFrom = require.resolve(moduleName, {
+      paths: [fileURLToPath(workingDirectory)],
+    });
+
+    const fromPkgDir = await packageDirectory({
+      cwd: resolvedFrom,
+    });
+
+    assert(fromPkgDir, 'fromPkgDir empty');
+    logger.info({ fromPkgDir });
+
+    const arb = new Arborist({
+      path: fromPkgDir,
+    });
+
+    const tree = await arb.loadActual();
+    const npmFileList = await packlist(tree);
+
+    npmFileList.forEach((f: string) => {
+      const filePath = relative(
+        fileURLToPath(workspaceRoot),
+        join(fromPkgDir, f),
+      );
+      additionalFiles.add(filePath);
+    });
   }
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
@@ -235,9 +231,10 @@ export async function bundle(options: BirudaOptions) {
     //   }),
     // ),
     scripts: Object.fromEntries(
-      outputFiles.map(([name, file]) => {
-        return [name === 'index' ? 'start' : name, `node ${basename(file)}`];
-      }),
+      outputFiles.map(([name, file]) => [
+        name === 'index' ? 'start' : name,
+        `node ${basename(file)}`,
+      ]),
     ),
     // dependencies: Object.fromEntries(
     //   Array.from(buildResult..entries()).map(([id, { version }]) => [
@@ -277,8 +274,10 @@ export async function bundle(options: BirudaOptions) {
     { recursive: true },
   );
 
-  const augmentedFiles = await Promise.all(
-    [...files, ...extras].map(async (file) => {
+  const augmentedFiles = await serialPromiseMap(
+    [...files, ...additionalFiles],
+    async (file) => {
+      logger.info(file, 'Copying file %s', file);
       const srcFile = join(workspaceRootAsPath, file);
       const srcFileStat = await lstat(srcFile);
 
@@ -287,7 +286,7 @@ export async function bundle(options: BirudaOptions) {
 
       const isSymlink = srcFileStat.isSymbolicLink();
       return { file, srcFile, destFile, destDir, isSymlink };
-    }),
+    },
   );
 
   const destDirs = new Set(augmentedFiles.map(({ destDir }) => destDir));
@@ -343,7 +342,7 @@ export async function cliBundle(cliArguments: BirudaCliArguments) {
   const [files, size] = [Infinity, Infinity] || (await dirSize(outDir));
 
   logger.info(
-    `Done. Output at %s (~%skb in %d files)`,
+    'Done. Output at %s (~%skb in %d files)',
     outDir,
     new Intl.NumberFormat().format(Math.round(size / 1024)),
     files,
