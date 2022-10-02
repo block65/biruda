@@ -151,7 +151,17 @@ export async function bundle(options: BirudaOptions) {
     srcPaths: outputFiles.map(([, fileName]) => fileName),
     allowMissing: {
       '@aws-sdk/util-user-agent-node': ['aws-crt'],
+      '@aws-sdk/signature-v4-multi-region': ['@aws-sdk/signature-v4-crt'],
       'retry-request': ['request'],
+      'node-fetch': ['encoding'],
+      mongodb: [
+        'bson-ext',
+        'mongodb-client-encryption',
+        '@mongodb-js/zstd',
+        'snappy',
+        'aws4',
+        'kerberos',
+      ],
     },
   });
 
@@ -169,7 +179,7 @@ export async function bundle(options: BirudaOptions) {
 
   const externalPaths = new Set<string>(resolvedConfig.extraPaths);
 
-  async function generatePacklist(modulePath: string, base: URL) {
+  async function generatePacklistActual(modulePath: string, base: URL) {
     const modulePkgDir = await packageDirectory({
       cwd: join(fileURLToPath(base), modulePath),
     });
@@ -190,7 +200,7 @@ export async function bundle(options: BirudaOptions) {
         ].map((pattern) =>
           glob.promise(pattern.startsWith('/') ? `.${pattern}` : pattern, {
             cwd: modulePkgDir,
-            // redundant, we're already *installed*
+            // lockfiles are redundant, we're already *installed*
             ignore: ['yarn.lock', 'package-lock.json', '**/*.js.map'],
           }),
         ),
@@ -216,7 +226,7 @@ export async function bundle(options: BirudaOptions) {
     // ...resolvedConfig.extraModules,
     ...uniquePackageDirs,
   ] || []) {
-    await generatePacklist(moduleName, workspaceRoot);
+    await generatePacklistActual(moduleName, workspaceRoot);
   }
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
