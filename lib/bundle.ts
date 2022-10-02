@@ -1,20 +1,13 @@
 import assert from 'node:assert';
-import {
-  cp,
-  lstat,
-  mkdir,
-  readlink,
-  symlink,
-  writeFile,
-} from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { cp, lstat, mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import Arborist from '@npmcli/arborist';
-import packlist from 'npm-packlist';
+import glob from 'glob-promise';
 import { packageDirectory } from 'pkg-dir';
+import { readPackage } from 'read-pkg';
+import { traceFiles } from 'trace-deps';
 import type { PackageJson } from 'type-fest';
-import { findWorkspaceRoot, loadPackageJson, traceFiles } from './deps.js';
+import { findWorkspaceRoot, loadPackageJson } from './deps.js';
 import { build } from './esbuild/build.js';
 import { logger as parentLogger } from './logger.js';
 import {
@@ -152,70 +145,78 @@ export async function bundle(options: BirudaOptions) {
   });
 
   const workspaceRoot = await findWorkspaceRoot(workingDirectory);
+  const workspaceRootAsPath = fileURLToPath(workspaceRoot);
 
-  const { files } = await traceFiles(
-    outputFiles.map(([, fileName]) => fileName),
-    {
-      workspaceRoot,
-      ignorePaths: ['node:*', relative(fileURLToPath(workspaceRoot), buildDir)],
-      ignorePackages: [
-        ...(resolvedConfig.ignorePackages || []),
-        // .filter(
-        //   (pkg): pkg is string => typeof pkg === 'string',
-        // ),
-
-        // extraModules are ignored because we will copy the entire
-        // module and its deps later, no point tracing it
-        ...resolvedConfig.extraModules,
-      ],
+  const deps = await traceFiles({
+    srcPaths: outputFiles.map(([, fileName]) => fileName),
+    allowMissing: {
+      '@aws-sdk/util-user-agent-node': ['aws-crt'],
+      'retry-request': ['request'],
     },
-  );
+  });
 
-  if (resolvedConfig.extraModules && resolvedConfig.extraModules.length > 0) {
-    logger.info(
-      resolvedConfig.extraModules,
-      'Including %d extra modules',
-      resolvedConfig.extraModules.length,
-    );
-  }
+  // logger.info({ srcPath: outputFiles.map(([, fileName]) => fileName), deps });
 
-  const additionalFiles = new Set<string>(resolvedConfig.extraPaths);
+  const uniquePackageDirs = [
+    ...new Set(
+      deps.dependencies
+        .map((d) => relative(workspaceRootAsPath, d))
+        .map((f) => f.match(/(.*node_modules\/(@.*?\/.*?|.*?))\//))
+        .filter((m): m is string[] => !!m)
+        .map((m) => m[0]),
+    ),
+  ];
 
-  // must run serially due to path descending and caching
-  // eslint-disable-next-line no-restricted-syntax
-  for await (const moduleName of [
-    ...(resolvedConfig.externals || []),
-    ...resolvedConfig.extraModules,
-  ] || []) {
-    logger.info('[%s] resolving module deps + files', moduleName);
+  const externalPaths = new Set<string>(resolvedConfig.extraPaths);
 
-    const require = createRequire(workingDirectory);
-
-    const resolvedFrom = require.resolve(moduleName, {
-      paths: [fileURLToPath(workingDirectory)],
+  async function generatePacklist(modulePath: string, base: URL) {
+    const modulePkgDir = await packageDirectory({
+      cwd: join(fileURLToPath(base), modulePath),
     });
+    assert(modulePkgDir, 'modulePkgDir empty');
 
-    const fromPkgDir = await packageDirectory({
-      cwd: resolvedFrom,
-    });
+    // logger.info('Creating packlist from %s', modulePkgDir);
+    const manifest = await readPackage({ cwd: modulePkgDir });
 
-    assert(fromPkgDir, 'fromPkgDir empty');
-    logger.info({ fromPkgDir });
+    // we only really use globs because we're in our own monorepo
+    // and the package may not be published
+    const packlist = (
+      await Promise.all(
+        [
+          ...(manifest.files || ['*']), // no files[] -> copy everything
+          'package.json',
+          'readme*',
+          'license*',
+        ].map((pattern) =>
+          glob.promise(pattern.startsWith('/') ? `.${pattern}` : pattern, {
+            cwd: modulePkgDir,
+            // redundant, we're already *installed*
+            ignore: ['yarn.lock', 'package-lock.json', '**/*.js.map'],
+          }),
+        ),
+      )
+    ).flat();
 
-    const arb = new Arborist({
-      path: fromPkgDir,
-    });
+    // logger.info({ tree }, 'tree for %s', moduleName);
+    // logger.info({ packlist }, 'packlist for %s', modulePath);
 
-    const tree = await arb.loadActual();
-    const npmFileList = await packlist(tree);
-
-    npmFileList.forEach((f: string) => {
+    packlist.forEach((f: string) => {
       const filePath = relative(
         fileURLToPath(workspaceRoot),
-        join(fromPkgDir, f),
+        join(modulePkgDir, f),
       );
-      additionalFiles.add(filePath);
+      externalPaths.add(filePath);
     });
+  }
+
+  // eslint-disable-next-line no-restricted-syntax
+  for await (const moduleName of [
+    // ...(uniquePackageDirs || []),
+    // ...(resolvedConfig.externals || []),
+    // ...resolvedConfig.extraModules,
+    ...uniquePackageDirs,
+  ] || []) {
+    await generatePacklist(moduleName, workspaceRoot);
   }
 
   const newPackageJson: PackageJson.PackageJsonStandard = {
@@ -245,7 +246,6 @@ export async function bundle(options: BirudaOptions) {
   };
 
   const outDirAsPath = fileURLToPath(outDir);
-  const workspaceRootAsPath = fileURLToPath(workspaceRoot);
 
   await mkdir(outDir, {
     recursive: true,
@@ -274,10 +274,10 @@ export async function bundle(options: BirudaOptions) {
     { recursive: true },
   );
 
-  const augmentedFiles = await serialPromiseMap(
-    [...files, ...additionalFiles],
+  const filesWithStat = await serialPromiseMap(
+    [...new Set([...externalPaths])],
     async (file) => {
-      logger.info(file, 'Copying file %s', file);
+      // logger.info('Stating file %s', file);
       const srcFile = join(workspaceRootAsPath, file);
       const srcFileStat = await lstat(srcFile);
 
@@ -289,32 +289,16 @@ export async function bundle(options: BirudaOptions) {
     },
   );
 
-  const destDirs = new Set(augmentedFiles.map(({ destDir }) => destDir));
   // eslint-disable-next-line no-restricted-syntax
-  for await (const dir of destDirs) {
-    await mkdir(dir, {
-      recursive: true,
-    });
-  }
-
-  // eslint-disable-next-line no-restricted-syntax
-  for await (const file of augmentedFiles.filter(
+  for await (const file of filesWithStat.filter(
     ({ isSymlink }) => !isSymlink,
   )) {
-    // await copyFile(file.srcFile, file.destFile); // , {
+    // logger.info('Copying file %s to %s', file.srcFile, file.destFile);
     await cp(file.srcFile, file.destFile, {
       errorOnExist: true, // safety first, could be a bug
       recursive: true,
-      //   verbatimSymlinks: true, // node17 only
-    });
-  }
-
-  // eslint-disable-next-line no-restricted-syntax
-  for await (const file of augmentedFiles.filter(
-    ({ isSymlink }) => isSymlink,
-  )) {
-    const target = await readlink(file.srcFile);
-    await symlink(target, file.destFile);
+      // verbatimSymlinks: true, // node17 only
+    }).catch(logger.warn);
   }
 
   // WARN: copy new manifest, this overwrites the one there already
@@ -327,7 +311,7 @@ export async function bundle(options: BirudaOptions) {
 
   return {
     outDir,
-    files,
+    filesWithStat,
   };
 }
 

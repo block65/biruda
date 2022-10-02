@@ -1,21 +1,8 @@
 import { PathLike } from 'node:fs';
 import fs, { readdir, stat } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { fileURLToPath, pathToFileURL, URL } from 'node:url';
-import {
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve as resolvePath,
-} from 'path';
-import { findUp, pathExists } from 'find-up';
-import packlist from 'npm-packlist';
-import { packageDirectory } from 'pkg-dir';
+import { fileURLToPath, URL } from 'node:url';
+import { isAbsolute, relative, resolve as resolvePath } from 'path';
 import type { JsonValue } from 'type-fest';
-import { logger as parentLogger } from './logger.js';
-
-const logger = parentLogger.child({}, { context: { name: 'utils' } });
 
 export function inlineTryCatch<T, Y>(
   fn: () => T,
@@ -27,8 +14,6 @@ export function inlineTryCatch<T, Y>(
     return onReject(err);
   }
 }
-
-packlist({});
 
 export function maybeMakeAbsolute(entry: string, baseDir: string): string {
   if (isAbsolute(entry)) {
@@ -60,7 +45,7 @@ export function relativeFileUrl(from: URL, to: URL): string {
 }
 
 // create a function that will definitely run at least once, every `delay` seconds
-export function basicThrottle<T extends (...args: any[]) => any>(
+export function basicThrottle<T extends (...args: any[]) => unknown>(
   callback: T,
   delay: number,
 ) {
@@ -78,7 +63,7 @@ export function basicThrottle<T extends (...args: any[]) => any>(
 
 // create a function that will run at least once `delay` seconds after the last call
 
-export function basicDebounce<T extends (...args: any[]) => any>(
+export function basicDebounce<T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number,
 ) {
@@ -90,7 +75,7 @@ export function basicDebounce<T extends (...args: any[]) => any>(
 }
 
 export async function readJsonFile<T = JsonValue>(file: URL): Promise<T> {
-  return JSON.parse(await fs.readFile(file, 'utf-8'));
+  return JSON.parse(await fs.readFile(file, 'utf-8')) as T;
 }
 
 export async function recursiveReaddir(dir: PathLike): Promise<PathLike[]> {
@@ -98,10 +83,9 @@ export async function recursiveReaddir(dir: PathLike): Promise<PathLike[]> {
   const files = await Promise.all(
     paths.flatMap(async (path) => {
       const absPath = new URL(`./${path}`, dir.toString());
-      console.log({ path, dir: dir.toString(), absPath: absPath.toString() });
       const stats = await stat(absPath);
       if (stats.isDirectory()) {
-        return recursiveReaddir(`${absPath}/`);
+        return recursiveReaddir(`${absPath.toString()}/`);
       }
       return [absPath];
     }),
