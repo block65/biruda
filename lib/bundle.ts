@@ -193,7 +193,9 @@ export async function bundle(options: BirudaOptions) {
     const packlist = (
       await Promise.all(
         [
-          ...(manifest.files || ['*']), // no files[] -> copy everything
+          ...(manifest.files || ['*']), // no `files[]` -> copy everything
+          ...(manifest.main || []), // add main, as it may not be in `files`
+          ...(manifest.module || []), // add module, as it may not be in `files`
           'package.json',
           'readme*',
           'license*',
