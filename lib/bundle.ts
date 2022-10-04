@@ -231,34 +231,6 @@ export async function bundle(options: BirudaOptions) {
     await generatePacklistActual(moduleName, workspaceRoot);
   }
 
-  const newPackageJson: PackageJson.PackageJsonStandard = {
-    name: packageJson?.name,
-    version: packageJson?.version,
-    license: packageJson?.license,
-    private: packageJson?.private,
-    ...(resolvedConfig.sourceType === 'esm' && { type: 'module' }),
-    // main: basename(outputFiles[0]),
-    // scripts: Object.fromEntries(
-    //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
-    //     return !scriptName.match(/^(dev|build|test)(\W|$)/);
-    //   }),
-    // ),
-    scripts: Object.fromEntries(
-      outputFiles.map(([name, file]) => [
-        name === 'index' ? 'start' : name,
-        `node ${basename(file)}`,
-      ]),
-    ),
-    // dependencies: Object.fromEntries(
-    //   Array.from(buildResult..entries()).map(([id, { version }]) => [
-    //     id,
-    //     version,
-    //   ]),
-    // ),
-  };
-
-  const outDirAsPath = fileURLToPath(outDir);
-
   await mkdir(outDir, {
     recursive: true,
   }).catch((err: NodeJS.ErrnoException) => {
@@ -267,24 +239,7 @@ export async function bundle(options: BirudaOptions) {
     }
   });
 
-  logger.trace(
-    'Copying built files from %s to %s',
-    buildDir,
-    join(
-      outDirAsPath,
-      relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
-    ),
-  );
-
-  // copy built files
-  await cp(
-    buildDir,
-    join(
-      outDirAsPath,
-      relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
-    ),
-    { recursive: true },
-  );
+  const outDirAsPath = fileURLToPath(outDir);
 
   const filesWithStat = await serialPromiseMap(
     [...new Set([...externalPaths])],
@@ -301,17 +256,60 @@ export async function bundle(options: BirudaOptions) {
     },
   );
 
+  const builtFilesDest = join(
+    outDirAsPath,
+    relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
+  );
+
+  logger.trace('Copying built files from %s to %s', buildDir, builtFilesDest);
+
+  // copy build files
+  await cp(buildDir, builtFilesDest, { recursive: true });
+
   // eslint-disable-next-line no-restricted-syntax
   for await (const file of filesWithStat.filter(
     ({ isSymlink }) => !isSymlink,
   )) {
     // logger.info('Copying file %s to %s', file.srcFile, file.destFile);
     await cp(file.srcFile, file.destFile, {
-      errorOnExist: true, // safety first, could be a bug
+      // errorOnExist: true, // safety first, could be a bug
       recursive: true,
-      // verbatimSymlinks: true, // node17 only
+      verbatimSymlinks: true, // node17 only
     }).catch(logger.warn);
   }
+
+  const newPackageJson: PackageJson.PackageJsonStandard = {
+    name: packageJson?.name,
+    version: packageJson?.version,
+    license: packageJson?.license,
+    private: packageJson?.private,
+    ...(resolvedConfig.sourceType === 'esm' && { type: 'module' }),
+    // main: basename(outputFiles[0]),
+    // scripts: Object.fromEntries(
+    //   Object.entries(packageJson.scripts || {}).filter(([scriptName]) => {
+    //     return !scriptName.match(/^(dev|build|test)(\W|$)/);
+    //   }),
+    // ),
+    scripts: Object.fromEntries(
+      outputFiles.flatMap(([name, file]) => {
+        const scriptName = `${name === 'index' ? 'start' : name}`;
+        const scriptPath = join(
+          relative(workspaceRootAsPath, fileURLToPath(workingDirectory)),
+          relative(buildDir, file),
+        );
+        return [
+          [scriptName, `node ${scriptPath}`],
+          [`smoketest-${name}`, `node --check ${scriptPath}`],
+        ];
+      }),
+    ),
+    // dependencies: Object.fromEntries(
+    //   Array.from(buildResult..entries()).map(([id, { version }]) => [
+    //     id,
+    //     version,
+    //   ]),
+    // ),
+  };
 
   // WARN: copy new manifest, this overwrites the one there already
   await writeFile(
@@ -319,7 +317,7 @@ export async function bundle(options: BirudaOptions) {
     JSON.stringify(newPackageJson, null, 2),
   );
 
-  await cleanup().catch((err) => logger.warn(err.message));
+  await cleanup().catch((err) => logger.warn(err));
 
   return {
     outDir,
