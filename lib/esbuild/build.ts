@@ -93,7 +93,7 @@ export async function build(options: EsBuildOptions): Promise<{
       : undefined
     )?.toLocaleLowerCase(),
     sourcemap: true,
-    sourcesContent: false, // unlikely to attach a debugger in production node
+    sourcesContent: true, // assumme we are upliading them to a service like Sentry
     format: options.sourceType || 'esm',
     write: false,
     legalComments: 'none',
