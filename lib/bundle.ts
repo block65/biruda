@@ -154,6 +154,13 @@ export async function bundle(options: BirudaOptions) {
       '@aws-sdk/signature-v4-multi-region': ['@aws-sdk/signature-v4-crt'],
       'retry-request': ['request'],
       'node-fetch': ['encoding'],
+      'cross-spawn': ['spawn-sync'], // cross-spawn tries to maintain node 0.10 compat XD
+      ws: [
+        // See, e.g.: https://github.com/websockets/ws/blob/08c6c8ba70404818f7f4bc23eb5fd0bf9c94c039/lib/buffer-util.js#L121-L122
+        'bufferutil',
+        // See, e.g.: https://github.com/websockets/ws/blob/b6430fea423d88926847a47d4ecfc36e52dc1164/lib/validation.js#L3-L10
+        'utf-8-validate',
+      ],
       mongodb: [
         'bson-ext',
         'mongodb-client-encryption',
