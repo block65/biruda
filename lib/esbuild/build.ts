@@ -93,7 +93,7 @@ export async function build(options: EsBuildOptions): Promise<{
       : undefined
     )?.toLocaleLowerCase(),
     sourcemap: true,
-    sourcesContent: true, // assumme we are upliading them to a service like Sentry
+    sourcesContent: true, // assume we are uploading them to a service like Sentry
     format: options.sourceType || 'esm',
     write: false,
     legalComments: 'none',
