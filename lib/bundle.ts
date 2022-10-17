@@ -16,6 +16,7 @@ import {
   BirudaOptions,
 } from './types.js';
 import { dirSize, serialPromiseMap } from './utils.js';
+import { createRequire } from 'node:module';
 
 const logger = parentLogger.child({}, { context: { name: 'bundle' } });
 
@@ -149,6 +150,7 @@ export async function bundle(options: BirudaOptions) {
 
   const deps = await traceFiles({
     srcPaths: outputFiles.map(([, fileName]) => fileName),
+    bailOnMissing: true,
     allowMissing: {
       '@aws-sdk/util-user-agent-node': ['aws-crt'],
       '@aws-sdk/signature-v4-multi-region': ['@aws-sdk/signature-v4-crt'],
@@ -172,52 +174,96 @@ export async function bundle(options: BirudaOptions) {
     },
   });
 
-  // logger.info({ srcPath: outputFiles.map(([, fileName]) => fileName), deps });
+  // special cases where we need to manually intervene and force package inclusion
+  const specialCases: RegExp[] = [/clone-deep\/utils\.js$/];
+
+  const specialCasePaths = Object.entries(deps.misses)
+    .filter(([missPath]) => specialCases.some((p) => missPath.match(p)))
+    .map(([missPath]) => missPath);
+
+  function toModulePaths(files: string[], base: URL): string[] {
+    return files
+      .map((d) => relative(fileURLToPath(base), d))
+      .map((f) => f.match(/(.*node_modules\/(@.*?\/.*?|.*?))\//))
+      .filter((m): m is string[] => !!m)
+      .map((m) => m[0]);
+  }
+
+  // resolve all of the dependencies from the manifest
+  // for each of the special case paths we found
+  const specialCaseEntrypoints = await Promise.all(
+    toModulePaths(specialCasePaths, workspaceRoot).map(
+      async (relativeModulePath) => {
+        logger.info({ modulePath: relativeModulePath });
+
+        const modulePkgDir = await packageDirectory({
+          cwd: join(workspaceRootAsPath, relativeModulePath),
+        });
+        assert(modulePkgDir, 'modulePkgDir falsy');
+
+        const manifest = await readPackage({ cwd: modulePkgDir });
+
+        const req = createRequire(modulePkgDir);
+
+        return Object.keys({ ...manifest.dependencies }).map((d) =>
+          req.resolve(d),
+        );
+      },
+    ),
+  );
+
+  const specialCaseTraceResult = await traceFiles({
+    srcPaths: specialCaseEntrypoints.flat(),
+    bailOnMissing: true,
+  });
 
   const uniquePackageDirs = [
-    ...new Set(
-      deps.dependencies
-        .map((d) => relative(workspaceRootAsPath, d))
-        .map((f) => f.match(/(.*node_modules\/(@.*?\/.*?|.*?))\//))
-        .filter((m): m is string[] => !!m)
-        .map((m) => m[0]),
-    ),
+    ...new Set([
+      ...toModulePaths(specialCaseEntrypoints.flat(), workspaceRoot),
+      ...toModulePaths(specialCaseTraceResult.dependencies, workspaceRoot),
+      ...toModulePaths(deps.dependencies, workspaceRoot),
+    ]),
   ];
 
   const externalPaths = new Set<string>(resolvedConfig.extraPaths);
 
-  async function generatePacklistActual(modulePath: string, base: URL) {
+  async function generatePacklistActual(relativeModulePath: string, base: URL) {
     const modulePkgDir = await packageDirectory({
-      cwd: join(fileURLToPath(base), modulePath),
+      cwd: join(fileURLToPath(base), relativeModulePath),
     });
     assert(modulePkgDir, 'modulePkgDir empty');
 
-    // logger.info('Creating packlist from %s', modulePkgDir);
-    const manifest = await readPackage({ cwd: modulePkgDir });
+    logger.trace('Creating packlist from %s', modulePkgDir);
+    // const manifest = await readPackage({ cwd: modulePkgDir });
 
     // we only really use globs because we're in our own monorepo
     // and the package may not be published
     const packlist = (
       await Promise.all(
         [
-          ...(manifest.files || ['*']), // no `files[]` -> copy everything
-          ...(manifest.main || []), // add main, as it may not be in `files`
-          ...(manifest.module || []), // add module, as it may not be in `files`
+          // just copy everything so we also catch anything new that was installed
+          // or generated in lifecycle scripts
+
+          '**/*',
+          // ...(manifest.files || ['*']), // no `files[]` -> copy everything
+          // ...(manifest.main || []), // add main, as it may not be in `files`
+          // ...(manifest.module || []), // add module, as it may not be in `files`
           'package.json',
           'readme*',
           'license*',
         ].map((pattern) =>
           glob.promise(pattern.startsWith('/') ? `.${pattern}` : pattern, {
             cwd: modulePkgDir,
+            // NOTE: we can ignore this stuff when adding to the a container image (for example)
             // lockfiles are redundant, we're already *installed*
-            ignore: ['yarn.lock', 'package-lock.json', '**/*.js.map'],
+            // ignore: ['yarn.lock', 'package-lock.json', '**/*.js.map'],
           }),
         ),
       )
     ).flat();
 
     // logger.info({ tree }, 'tree for %s', moduleName);
-    // logger.info({ packlist }, 'packlist for %s', modulePath);
+    logger.trace({ packlist }, 'packlist for %s', relativeModulePath);
 
     packlist.forEach((f: string) => {
       const filePath = relative(
@@ -229,13 +275,13 @@ export async function bundle(options: BirudaOptions) {
   }
 
   // eslint-disable-next-line no-restricted-syntax
-  for await (const moduleName of [
+  for await (const modulePath of [
     // ...(uniquePackageDirs || []),
     // ...(resolvedConfig.externals || []),
     // ...resolvedConfig.extraModules,
     ...uniquePackageDirs,
   ] || []) {
-    await generatePacklistActual(moduleName, workspaceRoot);
+    await generatePacklistActual(modulePath, workspaceRoot);
   }
 
   await mkdir(outDir, {
@@ -290,6 +336,7 @@ export async function bundle(options: BirudaOptions) {
     version: packageJson?.version,
     license: packageJson?.license,
     private: packageJson?.private,
+    dependencies: packageJson?.dependencies,
     ...(resolvedConfig.sourceType === 'esm' && { type: 'module' }),
     // main: basename(outputFiles[0]),
     // scripts: Object.fromEntries(
