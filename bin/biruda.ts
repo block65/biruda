@@ -1,13 +1,11 @@
 #!/usr/bin/env node
-// eslint-disable-next-line import/extensions
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { cliBundle } from '../lib/bundle.js';
 import { logger } from '../lib/logger.js';
 import type { BirudaCliArguments } from '../lib/types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-yargs(hideBin(process.argv))
+await yargs(hideBin(process.argv))
   .command<BirudaCliArguments>(
     'bundle',
     'bundle a package',

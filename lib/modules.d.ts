@@ -16,6 +16,7 @@ declare module '@npmcli/arborist' {
 declare module 'trace-deps' {
   export const traceFiles: (options: {
     srcPaths: string[];
+    bailOnMissing?: boolean;
     allowMissing?: Record<string, string[]>;
   }) => Promise<{
     dependencies: string[];
