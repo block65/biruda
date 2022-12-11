@@ -185,7 +185,7 @@ export async function bundle(options: BirudaOptions) {
     return files
       .map((d) => relative(fileURLToPath(base), d))
       .map((f) => f.match(/(.*node_modules\/(@.*?\/.*?|.*?))\//))
-      .filter((m): m is string[] => !!m)
+      .filter((m): m is RegExpMatchArray => !!m)
       .map((m) => m[0]);
   }
 
