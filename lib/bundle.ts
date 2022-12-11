@@ -167,6 +167,8 @@ export async function bundle(options: BirudaOptions) {
         'bson-ext',
         'mongodb-client-encryption',
         '@mongodb-js/zstd',
+        '@mongodb-js/zstd-darwin-x64',
+        '@mongodb-js/zstd-darwin-arm64',
         'snappy',
         'aws4',
         'kerberos',
