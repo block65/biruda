@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { cp, lstat, mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import glob from 'glob-promise';
@@ -16,7 +17,6 @@ import {
   BirudaOptions,
 } from './types.js';
 import { dirSize, serialPromiseMap } from './utils.js';
-import { createRequire } from 'node:module';
 
 const logger = parentLogger.child({}, { context: { name: 'bundle' } });
 
